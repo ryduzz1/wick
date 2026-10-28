@@ -736,6 +736,138 @@ mod tests {
         assert_eq!(r["inputs"], 0);
     }
 
+    fn world_spec(main: &str) -> MacroSpec {
+        let mut s = spec(
+            main,
+            &["mouse.click", "mouse.move", "keyboard", "character.reset"],
+        );
+        s.regions.insert(
+            "prompt".into(),
+            RegionSpec {
+                anchor: "top-center".into(),
+                x: 0.0,
+                y: 0.11,
+                w: 0.1,
+                h: 0.08,
+            },
+        );
+        s
+    }
+
+    fn world_scenario() -> Scenario {
+        serde_json::from_value(json!({ "world": {}, "winShare": 0 })).unwrap()
+    }
+
+    #[test]
+    fn a_route_stops_where_until_says() {
+        let main = r##"
+            export default { async run(ctx) {
+              const prompt = ctx.screen.track("prompt", { color: "#f2c14e" });
+              const r = await ctx.input.play([{ t: 0, do: "hold", key: "w", ms: 3000 }], { until: () => prompt.seen });
+              ctx.log(JSON.stringify(r));
+              await ctx.wait(500);
+            } };
+        "##;
+        let r = run_headless(world_spec(main), world_scenario(), 6.0).unwrap();
+        assert_eq!(r["end"]["reason"], "done", "{r}");
+        let log: Value = serde_json::from_str(r["logs"][0].as_str().unwrap()).unwrap();
+        assert_eq!(log["reached"], true, "{r}");
+        assert!(log["ms"].as_f64().unwrap() < 1500.0, "{r}");
+        let y = r["score"]["world"]["at"][1].as_f64().unwrap();
+        assert!(
+            (y - 0.22).abs() <= 0.08,
+            "stopped within reach of the dock: {r}"
+        );
+    }
+
+    #[test]
+    fn a_route_replays_holds_and_turns() {
+        let main = r##"
+            export default { async run(ctx) {
+              await ctx.input.play([
+                { t: 0, do: "hold", key: "w", ms: 500 },
+                { t: 600, do: "turn", dx: 392.7, dy: 0, ms: 200 },
+                { t: 900, do: "hold", key: "w", ms: 500 },
+              ]);
+            } };
+        "##;
+        let r = run_headless(world_spec(main), world_scenario(), 3.0).unwrap();
+        assert_eq!(r["end"]["reason"], "done", "{r}");
+        let w = &r["score"]["world"];
+        // Up 0.15, then a quarter turn right and 0.15 to the right.
+        let (x, y) = (w["at"][0].as_f64().unwrap(), w["at"][1].as_f64().unwrap());
+        assert!((x - 1.04).abs() < 0.01 && (y - 0.47).abs() < 0.01, "{r}");
+        assert!((w["heading"].as_f64().unwrap() - 90.0).abs() < 0.5, "{r}");
+    }
+
+    #[test]
+    fn a_timed_out_state_lets_go_of_held_keys() {
+        let main = r##"
+            export default { async run(ctx) {
+              await ctx.states({
+                walk: { timeout: 500, onTimeout: "rest", run: (ctx) => ctx.input.play([{ t: 0, do: "hold", key: "w", ms: 5000 }]) },
+                rest: { run: async (ctx) => { await ctx.wait(1500); return "done"; } },
+              });
+            } };
+        "##;
+        let r = run_headless(world_spec(main), world_scenario(), 4.0).unwrap();
+        assert_eq!(r["end"]["reason"], "done", "{r}");
+        let walked = r["score"]["world"]["walked"].as_f64().unwrap();
+        assert!(
+            (0.12..0.19).contains(&walked),
+            "stopped walking at the timeout: {r}"
+        );
+    }
+
+    #[test]
+    fn a_demonstration_becomes_a_storyboard() {
+        let mut scenario = world_scenario();
+        scenario.demo = serde_json::from_value(json!([
+            { "t": 300, "do": "hold", "key": "w", "ms": 1333 },
+            { "t": 2000, "do": "press", "key": "e" },
+            { "t": 3000, "do": "click", "at": [0.5, 0.82] },
+            { "t": 3150, "do": "click", "at": [0.5, 0.82] },
+            { "t": 3300, "do": "click", "at": [0.5, 0.82] },
+            { "t": 6500, "do": "hold", "key": "s", "ms": 1333 },
+            { "t": 8200, "do": "hold", "key": "d", "ms": 1867 },
+            { "t": 10600, "do": "press", "key": "e" },
+            { "t": 11600, "do": "click", "at": [0.5, 0.6] },
+            { "t": 12400, "do": "press", "key": "escape" },
+        ]))
+        .unwrap();
+        let dir = std::env::temp_dir().join(format!("wick-demo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let spec: RecordSpec =
+            serde_json::from_value(json!({ "dir": dir, "seconds": 14, "fps": 10, "you": true }))
+                .unwrap();
+        let r = record_headless(spec, scenario, None).unwrap();
+        let board: Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("storyboard.json")).unwrap())
+                .unwrap();
+        let labels: Vec<&str> = board["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["label"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "hold w 1.3 s, then press e",
+                "click ×3",
+                "wait 3.2 s",
+                "hold s 1.3 s, d 1.9 s, then press e",
+                "click",
+                "press escape",
+                "wait 1.6 s",
+            ],
+            "{board:#}"
+        );
+        assert_eq!(board["steps"][4]["actions"][0]["at"], json!([0.5, 0.6]));
+        assert!(r["storyboard"]["sheet"].is_string(), "{r}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn unknown_regions_are_reported() {
         let bad = r##"export default { async run(ctx) { ctx.screen.track("nope", { color: "#ffffff" }); await ctx.wait(100); } };"##;

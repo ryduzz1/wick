@@ -69,6 +69,12 @@ const TOOLS = [
     description: 'A recording split into steps, rebuilt from its log: for each step its time range, a label like "hold w 2.1 s, then press e", the actions with times, whether the screen changed all at once at its end, and its start and end keyframes. Returns the storyboard sheet (each step\'s last frame, in order) as an image. Defaults to the newest recording.',
     properties: { folder, recording: { type: 'string', description: 'The recording folder (the "dir" a record call returned).' } },
   },
+  {
+    name: 'wick_route',
+    method: 'route',
+    description: 'Turn part of a recording into a route the macro replays with ctx.input.play(route, { until }): storyboard steps ("3" or "3-5") or a time range in seconds. The route keeps the holds, presses, clicks and mouse turns with their timing (times from the route\'s first input). With name, saves it as routes/NAME.js in the macro folder and returns how to import it. Routes get the macro from one known place to another; end them with an until check on what should be on screen there.',
+    properties: { folder, recording: { type: 'string' }, steps: { type: 'string' }, from: { type: 'number' }, to: { type: 'number' }, name: { type: 'string' } },
+  },
   { name: 'wick_regions', method: 'regions', description: 'The macro\'s regions. x and y place each region\'s center relative to its anchor; x, y, w and h are in viewport heights.', properties: { folder } },
   {
     name: 'wick_set_region',
@@ -91,7 +97,7 @@ const TOOLS = [
   { name: 'wick_new_macro', method: 'newMacro', description: 'Create a new macro folder from the starter template, in the Wick library unless dir is given.', properties: { name: { type: 'string' }, target, dir: { type: 'string' } }, required: ['name'] },
 ];
 
-const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'record', 'storyboard', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate', 'runs']);
+const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'record', 'storyboard', 'route', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate', 'runs']);
 
 /** Tool results as MCP content: the JSON, plus any PNG the command saved. */
 function content(result) {

@@ -1,0 +1,16 @@
+{
+  "wick": 1,
+  "id": "wick/fishing-trip",
+  "name": "Fishing trip",
+  "version": "0.1.0",
+  "description": "Walks to the dock, fishes until the bag is full, walks to the vendor and sells, then resets and goes again. Its routes came from a recorded demonstration.",
+  "author": "wick",
+  "target": "sim",
+  "entry": "main.ts",
+  "permissions": ["mouse.click", "mouse.move", "keyboard", "character.reset"],
+  "settings": {
+    "trips": { "type": "integer", "min": 0, "default": 0, "label": "Trips to make (0 = forever)" },
+    "minGap": { "type": "number", "min": 10, "max": 500, "default": 60, "label": "Minimum time between clicks (ms)" }
+  },
+  "simulator": { "world": {}, "roundMs": 2500 }
+}

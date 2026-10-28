@@ -189,7 +189,9 @@ You write the macro; you don't play the game. Use the \`wick\` CLI (or the Wick 
 | \`wick regions\` / \`wick region set bar --anchor bottom-center --x 0 --y -0.18 --w 0.46 --h 0.06\` | List or edit regions. x/y place the center relative to the anchor; all four are in viewport heights. |
 | \`wick probe --track tick:bar:#ffffff --clicks 5 --every 300 --seconds 2\` | Follows colors while sending timed input; prints each tracker's position over time. Use it to measure speeds, how far an input moves things, and latency. |
 | \`wick act click [--at bar]\` / \`wick act press e\` | Sends one input to test something. |
-| \`wick record --seconds 20 [--you] [--run]\` | Saves keyframes, a change score per sample and every input to \`.wick/recordings/\`, plus a contact sheet. \`--you\` logs the user's own clicks and keys: ask them to do the task once while it records. |
+| \`wick record --seconds 120 [--you] [--run]\` | Saves keyframes, a change score per sample and every input to \`.wick/recordings/\`, plus a contact sheet and \`storyboard.md\` (the recording split into steps). \`--you\` logs the user's own clicks, keys and mouse: ask them to play one full loop of the task from a spot they can always get back to (like right after a respawn). |
+| \`wick storyboard\` | The newest recording's steps again: what was held, pressed, clicked and turned, the waits, and the frames at each step's start and end. |
+| \`wick route --steps 3-4 --name to-vendor\` | Saves those storyboard steps as \`routes/to-vendor.js\`, for \`ctx.input.play(route, { until })\`. |
 | \`wick run [--seconds 20]\` | Runs this macro and prints the result and its log. On the \`sim\` target it runs instantly. |
 | \`wick simulate [--seeds 5]\` | Runs this macro on several simulated games (bar minigame only). |
 | \`wick telemetry\` | The last run's result again. |
@@ -208,8 +210,8 @@ Every command takes \`--target roblox|testbench|sim\` (default: the manifest's t
 
 1. **Look:** \`observe\`, then draw regions around the moving parts (\`region set\`).
 2. **Detect:** \`detect\` each region to find the exact colors, and check matches with \`--mask\`.
-3. **Measure:** \`probe\` to get the mechanics as numbers instead of guessing.
-4. **Write** \`main.ts\` from those numbers. Anything with more than one step (cast, play, sell, repeat) should be a state machine with \`ctx.states()\`: one state per step, a \`timeout\` on each, a \`recover\` state that gets back to a known place, and a \`startPoint\` region checked before each loop. Inside a state, use the state's own \`ctx\`. See the types in \`wick.d.ts\`.
+3. **Measure:** \`probe\` to get the mechanics as numbers instead of guessing. For a task with several parts, \`record --you\` one loop of the user playing and read \`storyboard.md\` and the frames it names.
+4. **Write** \`main.ts\` from those numbers. Anything with more than one step (cast, play, sell, repeat) should be a state machine with \`ctx.states()\`: one state per step, a \`timeout\` on each, a \`recover\` state that gets back to a known place, and a \`startPoint\` region checked before each loop. Walking between places is a route cut from the recording, ended by an \`until\` on what the screen shows on arrival. Inside a state, use the state's own \`ctx\`. See the types in \`wick.d.ts\`.
 5. **Test:** \`run\` with a short limit, read the result and log, and fix what fails.
 6. **Wrap up:** fill in \`settings\`, \`permissions\` and \`README.md\`.
 `;

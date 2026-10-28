@@ -29,6 +29,9 @@ Usage: wick <command> [options]
                                  (up to 600 s). --you also logs your clicks, keys and
                                  mouse; --run runs the macro meanwhile
   storyboard [DIR]               Rebuild and show a recording's steps (default: newest)
+  route [DIR] --steps A[-B] | --from S --to S [--name NAME]
+                                 Turn part of a recording into a route; --name saves
+                                 it as routes/NAME.js for ctx.input.play
   regions                        List the macro's regions
   region set NAME [--anchor A] [--x N] [--y N] [--w N] [--h N]
   region remove NAME
@@ -48,6 +51,7 @@ Options for every command:
   --folder F     The macro folder (default: the nearest folder with wick.json)
   --target T     roblox, testbench or sim (default: the macro's target)
   --local        Use a local engine even if the Wick app is open
+  --scenario F   On sim: a simulator setup (JSON) to use instead of the macro's
 
 Output is JSON. Input only reaches the target while it has focus; F8 stops everything.`;
 
@@ -155,7 +159,9 @@ const ACT = {
 export function toRequest(positional, flags, cwd = process.cwd()) {
   const [command, ...args] = positional;
   const folder = flags.folder ? path.resolve(cwd, flags.folder) : findFolder(cwd);
-  const base = { folder: folder ?? undefined, target: flags.target };
+  // A simulator setup from a JSON file, in place of the macro's own.
+  const scenario = flags.scenario ? JSON.parse(fs.readFileSync(path.resolve(cwd, flags.scenario), 'utf8')) : undefined;
+  const base = { folder: folder ?? undefined, target: flags.target, scenario };
   const needFolder = () => {
     if (!folder) throw new Error('Run this inside a macro folder (one with wick.json), or pass --folder.');
   };
@@ -198,6 +204,8 @@ export function toRequest(positional, flags, cwd = process.cwd()) {
         exact: Boolean(flags.exact),
         live: Boolean(flags.live),
       }];
+    case 'route':
+      return ['route', { ...base, recording: args[0] && path.resolve(cwd, args[0]), steps: flags.steps, from: number(flags.from), to: number(flags.to), name: flags.name }];
     case 'storyboard':
       return ['storyboard', { ...base, recording: args[0] && path.resolve(cwd, args[0]) }];
     case 'regions':

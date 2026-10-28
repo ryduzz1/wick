@@ -206,17 +206,114 @@
         tm.reject?.(new Cancelled(scope.name));
       }
     }
+    // Let go of whatever the stopped state was holding.
+    for (const key of scope.keys ?? []) input.keyUp(key);
+    for (const button of scope.buttons ?? []) input.mouseUp(button);
   };
 
-  // Input from a stopped state is ignored.
-  const scopedInput = (scope) => {
+  // Route actions: see docs/API.md#routes.
+  const ROUTE_ACTIONS = new Set(["hold", "press", "click", "turn", "wait", "keyDown", "keyUp"]);
+  const routeEvents = (route, speed) => {
+    if (!Array.isArray(route)) fail("input.play(route) needs an array of actions, like a storyboard step's");
+    const events = [];
+    let end = 0;
+    for (const [i, a] of route.entries()) {
+      if (!a || !ROUTE_ACTIONS.has(a.do)) fail(`Route action ${i} has an unknown "do": ${format(a?.do)}. Use ${[...ROUTE_ACTIONS].join(", ")}.`);
+      const at = Number(a.t ?? 0) / speed;
+      const ms = Number(a.ms ?? 0) / speed;
+      if (!(at >= 0)) fail(`Route action ${i} needs a time "t" of 0 or more`);
+      end = Math.max(end, at + ms);
+      switch (a.do) {
+        case "hold":
+          events.push({ at, kind: "down", key: String(a.key) }, { at: at + ms, kind: "up", key: String(a.key) });
+          break;
+        case "keyDown":
+          events.push({ at, kind: "down", key: String(a.key) });
+          break;
+        case "keyUp":
+          events.push({ at, kind: "up", key: String(a.key) });
+          break;
+        case "press":
+          events.push({ at, kind: "press", key: String(a.key), hold: a.ms ?? 40 });
+          break;
+        case "click": {
+          const where = Array.isArray(a.at) ? { region: a.region ?? null, x: a.at[0], y: a.at[1] } : a.at;
+          events.push({ at, kind: "click", button: a.button ?? "left", where, hold: Math.min(a.ms ?? 30, 500) });
+          break;
+        }
+        case "turn": {
+          // Spread over its duration, the way it was made.
+          const n = Math.max(1, Math.round(ms / 50));
+          for (let k = 0; k < n; k++) events.push({ at: at + (k * ms) / n, kind: "turn", dx: Number(a.dx ?? 0) / n, dy: Number(a.dy ?? 0) / n });
+          break;
+        }
+      }
+    }
+    events.sort((x, y) => x.at - y.at);
+    return { events, end };
+  };
+
+  // The input API, for the whole macro (scope null) or one state. A
+  // state's input is ignored once it's stopped, and what it held is let go.
+  const makeInput = (scope, t) => {
     const out = {};
+    const live = () => !scope?.cancelled;
+    if (scope) {
+      scope.keys = new Set();
+      scope.buttons = new Set();
+    }
     for (const key of Object.keys(input)) {
       const desc = Object.getOwnPropertyDescriptor(input, key);
       if (typeof desc.value === "function") {
-        out[key] = (...args) => (scope.cancelled ? false : input[key](...args));
+        out[key] = (...args) => (live() ? input[key](...args) : false);
       }
     }
+    if (scope) {
+      out.keyDown = (key) => live() && (scope.keys.add(String(key)), input.keyDown(key));
+      out.keyUp = (key) => live() && (scope.keys.delete(String(key)), input.keyUp(key));
+      out.mouseDown = (button = "left") => live() && (scope.buttons.add(button), input.mouseDown(button));
+      out.mouseUp = (button = "left") => live() && (scope.buttons.delete(button), input.mouseUp(button));
+    }
+    out.play = async (route, options = {}) => {
+      const speed = options.speed > 0 ? options.speed : 1;
+      const until = options.until;
+      if (until != null && typeof until !== "function") fail("input.play: until must be a function");
+      const { events, end } = routeEvents(route, speed);
+      const start = now;
+      const held = new Set();
+      const done = (reached) => {
+        for (const key of held) out.keyUp(key);
+        return { reached, ms: now - start };
+      };
+      for (const e of events) {
+        if (now < start + e.at) {
+          await t.waitUntil(() => now >= start + e.at || (until ? until() : false));
+        }
+        if (until?.()) return done(true);
+        switch (e.kind) {
+          case "down":
+            held.add(e.key);
+            out.keyDown(e.key);
+            break;
+          case "up":
+            held.delete(e.key);
+            out.keyUp(e.key);
+            break;
+          case "press":
+            out.press(e.key, { hold: e.hold });
+            break;
+          case "click":
+            out.click({ button: e.button, at: e.where, hold: e.hold });
+            break;
+          case "turn":
+            out.turn(e.dx, e.dy);
+            break;
+        }
+      }
+      if (now < start + end) await t.waitUntil(() => now >= start + end || (until ? until() : false));
+      if (until && !until() && options.settle > 0) await t.waitUntil(until, { timeout: options.settle });
+      return done(until ? Boolean(until()) : true);
+    };
     Object.defineProperty(out, "latency", { get: () => latency });
     Object.defineProperty(out, "focused", { get: () => focused });
     return Object.freeze(out);
@@ -243,7 +340,7 @@
     });
     return Object.freeze({
       screen,
-      input: scope ? scopedInput(scope) : input,
+      input: makeInput(scope, t),
       loop: t.loop,
       wait: t.wait,
       waitUntil: t.waitUntil,

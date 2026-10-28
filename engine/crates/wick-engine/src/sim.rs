@@ -11,6 +11,9 @@
 //! prompt to cast, play one round of the bar, and the prompt comes back.
 //! Failures can be injected (casts that never land until the character is
 //! reset, a disconnect that needs a rejoin) to test a macro's recovery.
+//!
+//! With `world` set, the bar is part of a small top-down world with walking,
+//! a bag to fill and a vendor to sell to (see `sim_world.rs`).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -20,6 +23,7 @@ use serde_json::{json, Value};
 
 use crate::frame::{Frame, Rect};
 use crate::input::Action;
+use crate::sim_world::{World, WorldSpec};
 use crate::target::Target;
 
 pub const BACKGROUND: [u8; 3] = [24, 26, 31];
@@ -70,6 +74,89 @@ pub struct Scenario {
     pub disconnect_at_ms: Option<f64>,
     pub reset_ms: f64,
     pub rejoin_ms: f64,
+    /// Put the bar in a world to walk around (rounds default to 2.5 s).
+    pub world: Option<WorldSpec>,
+    /// A scripted person playing, in route form (see docs/API.md#routes):
+    /// their input reaches the game and is heard like a real person's, so
+    /// recordings with `you` can be tested headlessly.
+    pub demo: Vec<DemoAction>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct DemoAction {
+    pub t: f64,
+    #[serde(rename = "do")]
+    pub what: String,
+    #[serde(default)]
+    pub key: Option<String>,
+    #[serde(default)]
+    pub ms: Option<f64>,
+    /// For clicks: fractions of the viewport.
+    #[serde(default)]
+    pub at: Option<[f64; 2]>,
+    #[serde(default)]
+    pub dx: f64,
+    #[serde(default)]
+    pub dy: f64,
+}
+
+/// A timed action of the scripted person, with where a click lands in frame pixels.
+type DemoInput = (f64, Action, Option<(f64, f64)>);
+
+/// The demo as timed actions, with click positions in frame pixels.
+fn expand_demo(demo: &[DemoAction], width: usize, height: usize) -> Vec<DemoInput> {
+    let mut out = Vec::new();
+    let key = |name: &str, down| Action::Key {
+        name: name.to_string(),
+        down,
+    };
+    for a in demo {
+        let ms = a.ms.unwrap_or(0.0);
+        match a.what.as_str() {
+            "hold" | "press" => {
+                let k = a.key.as_deref().unwrap_or("");
+                let ms = if a.what == "press" {
+                    a.ms.unwrap_or(40.0)
+                } else {
+                    ms
+                };
+                out.push((a.t, key(k, true), None));
+                out.push((a.t + ms, key(k, false), None));
+            }
+            "click" => {
+                let at = a.at.map(|[x, y]| (x * width as f64, y * height as f64));
+                if let Some((x, y)) = at {
+                    out.push((a.t, Action::MoveTo { x, y }, None));
+                }
+                let button = wick_platform::MouseButton::Left;
+                out.push((a.t, Action::Button { button, down: true }, at));
+                out.push((
+                    a.t + a.ms.unwrap_or(40.0),
+                    Action::Button {
+                        button,
+                        down: false,
+                    },
+                    at,
+                ));
+            }
+            "turn" => {
+                let n = (ms / 50.0).round().max(1.0) as usize;
+                for k in 0..n {
+                    out.push((
+                        a.t + k as f64 * ms / n as f64,
+                        Action::Turn {
+                            dx: a.dx / n as f64,
+                            dy: a.dy / n as f64,
+                        },
+                        None,
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    out.sort_by(|a, b| a.0.total_cmp(&b.0));
+    out
 }
 
 impl Default for Scenario {
@@ -93,6 +180,8 @@ impl Default for Scenario {
             disconnect_at_ms: None,
             reset_ms: 1500.0,
             rejoin_ms: 3000.0,
+            world: None,
+            demo: Vec::new(),
         }
     }
 }
@@ -392,7 +481,7 @@ impl BarGame {
         }
     }
 
-    fn render_bar(&self, frame: &mut Frame) {
+    pub(crate) fn render_bar(&self, frame: &mut Frame) {
         let track = Self::track_rect(frame.width, frame.height);
         let pad = track.h;
         frame.fill(
@@ -431,6 +520,11 @@ impl BarGame {
 
 pub struct SimTarget {
     pub game: BarGame,
+    pub world: Option<World>,
+    /// Where the last move put the cursor, in frame pixels.
+    cursor: Option<(f64, f64)>,
+    demo: std::collections::VecDeque<DemoInput>,
+    listening: bool,
     /// Input "the person" made, for tests of recordings.
     pub heard: Vec<crate::target::HeardInput>,
     frame: Frame,
@@ -439,10 +533,19 @@ pub struct SimTarget {
 }
 
 impl SimTarget {
-    pub fn new(scenario: Scenario, realtime: bool) -> Self {
+    pub fn new(mut scenario: Scenario, realtime: bool) -> Self {
         let frame = Frame::new(scenario.width, scenario.height, BACKGROUND);
+        let world = scenario.world.clone().map(World::new);
+        let demo = expand_demo(&scenario.demo, scenario.width, scenario.height).into();
+        if world.is_some() && scenario.round_ms <= 0.0 {
+            scenario.round_ms = 2500.0;
+        }
         SimTarget {
             game: BarGame::new(scenario),
+            world,
+            cursor: None,
+            demo,
+            listening: false,
             heard: Vec::new(),
             frame,
             realtime,
@@ -464,8 +567,29 @@ impl Target for SimTarget {
                 std::thread::sleep(sleep);
             }
         }
-        self.game.step(dt);
-        self.game.render(&mut self.frame);
+        // The scripted person's input that's due.
+        while self
+            .demo
+            .front()
+            .is_some_and(|d| d.0 <= self.game.t * 1000.0)
+        {
+            let (t, action, at) = self.demo.pop_front().unwrap();
+            let _ = self.send(&action);
+            if self.listening && !matches!(action, Action::MoveTo { .. }) {
+                self.heard.push(crate::target::HeardInput { t, action, at });
+            }
+        }
+        match &mut self.world {
+            Some(world) => {
+                let aspect = self.frame.width as f64 / self.frame.height as f64;
+                world.step(&mut self.game, dt, aspect);
+                world.render(&self.game, &mut self.frame);
+            }
+            None => {
+                self.game.step(dt);
+                self.game.render(&mut self.frame);
+            }
+        }
         Some(Arc::new(self.frame.clone()))
     }
 
@@ -486,6 +610,26 @@ impl Target for SimTarget {
     }
 
     fn send(&mut self, action: &Action) -> Result<(), String> {
+        if let Action::MoveTo { x, y } = action {
+            self.cursor = Some((*x, *y));
+        }
+        if let Some(world) = &mut self.world {
+            match action {
+                Action::Key { name, down } => world.key(&mut self.game, name, *down),
+                Action::Turn { dx, .. } => world.turn(&self.game, *dx),
+                Action::Button {
+                    button: wick_platform::MouseButton::Left,
+                    down: true,
+                } if !world.click(self.cursor, self.frame.width, self.frame.height) => {
+                    self.game.click()
+                }
+                _ => {}
+            }
+            if matches!(action, Action::Key { name, down: true } if name == "space") {
+                self.game.click();
+            }
+            return Ok(());
+        }
         match action {
             Action::Button {
                 button: wick_platform::MouseButton::Left,
@@ -508,11 +652,19 @@ impl Target for SimTarget {
         _game: &crate::target::GameInfo,
     ) -> Result<Vec<crate::human::Step>, String> {
         match name {
-            "character.reset" => self.game.reset(),
+            "character.reset" => match &mut self.world {
+                Some(world) => world.reset(&mut self.game),
+                None => self.game.reset(),
+            },
             "game.rejoin" => self.game.rejoin(),
             other => return Err(format!("\"{other}\" isn't available on the sim target.")),
         }
         Ok(Vec::new())
+    }
+
+    fn listen(&mut self, on: bool) -> Result<(), String> {
+        self.listening = on;
+        Ok(())
     }
 
     fn heard(&mut self) -> Vec<crate::target::HeardInput> {
@@ -526,6 +678,9 @@ impl Target for SimTarget {
             "clicks": g.clicks,
             "seconds": g.t,
         });
+        if let Some(world) = &self.world {
+            score["world"] = world.score();
+        }
         if g.rounds() || g.scenario.disconnect_at_ms.is_some() {
             score["rounds"] = json!({ "started": g.rounds_started, "played": g.rounds_played, "won": g.rounds_won });
             score["resets"] = json!(g.resets);

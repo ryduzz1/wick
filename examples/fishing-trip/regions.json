@@ -1,0 +1,8 @@
+{
+  "bar": { "anchor": "bottom-center", "x": 0, "y": -0.18, "w": 0.46, "h": 0.06 },
+  "prompt": { "anchor": "top-center", "x": 0, "y": 0.11, "w": 0.1, "h": 0.08 },
+  "lastSlot": { "anchor": "bottom-left", "x": 0.26, "y": -0.06, "w": 0.03, "h": 0.03 },
+  "menu": { "anchor": "center", "x": 0, "y": -0.15, "w": 0.5, "h": 0.06 },
+  "sellButton": { "anchor": "center", "x": 0, "y": 0.1, "w": 0.2, "h": 0.06 },
+  "spawn": { "anchor": "center", "x": 0, "y": 0.12, "w": 0.12, "h": 0.12 }
+}

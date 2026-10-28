@@ -125,6 +125,7 @@ export function createCommands(host) {
     }
   }
 
+  const camel = (slug) => slug.replace(/-(\w)/g, (_, c) => c.toUpperCase()).replace(/^\d/, '_$&');
   // The newest recording of a macro, if any.
   const latestRecording = (folder) => {
     const root = outDir(folder, 'recordings');
@@ -242,6 +243,8 @@ export function createCommands(host) {
       const dir = path.join(outDir(folder, 'recordings'), `${t}-${stamp()}`);
       const spec = { dir, seconds: Number(seconds), fps: Number(fps), region: regionFor(region, regions), you: Boolean(you) };
       const macro = run ? await loadMacro(folder, { settings: host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact) }) : undefined;
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ target: t, region: region ?? null, seconds: spec.seconds, fps: spec.fps, you: spec.you, at: new Date().toISOString() }));
       const note = 'Read storyboard.md first: the recording split into steps (what was pressed, held, clicked and turned, the waits, and where the screen changed), with each step\'s start and end frame; storyboard.png shows each step\'s last frame in order. record.jsonl has one line per sample ({ t, change, frame? }) and per input ({ t, by: "wick"|"you", input, ... }; "mouse" lines are the person\'s mouse motion summed per sample, which is how camera turns show up). Times are ms from the start and positions are fractions of the recorded area. contact.png shows the frames listed in "sheet", left to right, top to bottom.';
       if (t === 'sim' && !live) return { target: t, ...(await engine.call('sim.record', { ...spec, macro, scenario: scenario ?? manifest?.simulator })), note };
       await onTarget(t, manifest?.simulator);
@@ -268,6 +271,59 @@ export function createCommands(host) {
       const summary = await engine.call('record.storyboard', { dir });
       const board = JSON.parse(fs.readFileSync(path.join(dir, 'storyboard.json'), 'utf8'));
       return { dir, ...summary, path: summary.sheet ?? undefined, board };
+    },
+
+    /**
+     * Turns part of a recording into a route a macro can replay with
+     * ctx.input.play: storyboard steps ("3" or "3-5") or a time range in
+     * seconds. With a name, saves it as routes/NAME.js in the macro.
+     */
+    async route({ folder, recording, steps, from, to, name } = {}) {
+      const dir = recording ? path.resolve(recording) : latestRecording(folder);
+      if (!dir) throw new MacroError('There are no recordings yet. Make one with "wick record --you".');
+      if (!fs.existsSync(path.join(dir, 'storyboard.json'))) await engine.call('record.storyboard', { dir });
+      const board = JSON.parse(fs.readFileSync(path.join(dir, 'storyboard.json'), 'utf8'));
+      let meta = {};
+      try {
+        meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+      } catch {}
+      let actions;
+      let range;
+      if (steps != null) {
+        const m = /^(\d+)(?:-(\d+))?$/.exec(String(steps).trim());
+        if (!m) throw new MacroError('Give steps as a number or a range, like 3 or 3-5.');
+        const [a, b] = [Number(m[1]), Number(m[2] ?? m[1])];
+        const picked = board.steps.filter((s) => s.n >= a && s.n <= b);
+        if (!picked.length) throw new MacroError(`The storyboard has steps 1 to ${board.steps.length}.`);
+        actions = picked.flatMap((s) => s.actions);
+        range = [picked[0].start, picked.at(-1).end];
+      } else if (from != null || to != null) {
+        range = [Number(from ?? 0) * 1000, to != null ? Number(to) * 1000 : Infinity];
+        actions = board.steps.flatMap((s) => s.actions).filter((a) => a.t >= range[0] && a.t < range[1]);
+      } else {
+        throw new MacroError('Say which part: --steps 3-5, or --from S --to S in seconds.');
+      }
+      if (!actions.length) throw new MacroError('There are no inputs in that part of the recording.');
+      const base = actions[0].t;
+      const route = actions.map(({ to: _to, ...a }) => {
+        const out = { ...a, t: Math.round(a.t - base) };
+        if (a.do === 'click' && meta.region) out.region = meta.region;
+        return out;
+      });
+      const duration = Math.max(...route.map((a) => a.t + (a.ms ?? 0)));
+      const result = { dir, from: range[0] / 1000, to: Number.isFinite(range[1]) ? range[1] / 1000 : null, duration, route };
+      if (name) {
+        if (!folder) throw new MacroError('Saving a route needs a macro folder.');
+        const slug = String(name).trim().toLowerCase().replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '');
+        if (!slug) throw new MacroError('Give the route a name, like to-vendor.');
+        const file = path.join(folder, 'routes', `${slug}.js`);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        const where = steps != null ? `${/-/.test(String(steps)) ? 'steps' : 'step'} ${steps}` : `${result.from}–${result.to ?? 'end'} s`;
+        fs.writeFileSync(file, `// Route "${slug}": ${where} of the recording ${path.basename(dir)}, made by \`wick route\`.\n// Times are ms from the start of the route. Play it with ctx.input.play(route, { until }).\nexport default [\n${route.map((a) => `  ${JSON.stringify(a)},`).join('\n')}\n];\n`);
+        notify('log', { text: `Agent saved route "${slug}" (${(duration / 1000).toFixed(1)} s).` });
+        Object.assign(result, { file, usage: `import ${camel(slug)} from "./routes/${slug}.js";\n// ...\nawait ctx.input.play(${camel(slug)}, { until: () => prompt.seen });` });
+      }
+      return result;
     },
 
     regions({ folder }) {

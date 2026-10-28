@@ -132,6 +132,25 @@ The `sim` target plays a bar minigame. A macro can ask for a different setup in 
 
 A blue HUD sits at the bottom left except while resetting or rejoining. The simulator's score then reports rounds started, played and won, resets and rejoins.
 
+### The world
+
+With `"world": {}`, the bar is part of a small top-down world (rounds default to 2.5 s). The character (orange, with a dark mark showing its heading) starts at the spawn facing up. W and S walk along the heading, A and D strafe, and mouse turns rotate the heading. At the dock, E casts and a round plays; each won round adds a fish to the bag, the slots at the bottom left. At the vendor (the red stall), E opens a sell menu: its green button sells the bag and Escape closes it. The yellow prompt shows whenever the character is close enough to the dock or the vendor to use it, and a character reset puts it back at the spawn.
+
+| `world` field | Default | |
+| --- | --- | --- |
+| `bag` | 5 | Fish the bag holds. |
+| `speed` | 0.3 | Walking speed, in viewport heights per second. |
+| `turnRate` | 0.004 | Radians of heading per pixel of mouse turn. |
+| `spawn`, `dock`, `vendor` | `[0.89, 0.62]`, `[0.89, 0.22]`, `[1.45, 0.62]` | Positions, in viewport heights from the top left. |
+| `reach` | 0.08 | How close counts as being there. |
+| `price` | 10 | Coins per fish. |
+
+The score adds a `world` object: the bag, fish caught and sold, sales, coins, where the character is and which way it faces, and how far it walked.
+
+### Scripted demonstrations
+
+`"demo"` is a list of route actions (see [API.md](API.md#routes)) that a scripted person plays: their input reaches the game and is heard like a real person's, so `wick record --you --target sim --scenario demo.json` makes a demonstration, storyboard and routes without anyone playing. `examples/fishing-trip/demo.json` is one.
+
 ## Per-user data
 
 Stored in Wick's app data directory, keyed by macro `id`:

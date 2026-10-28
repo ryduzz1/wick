@@ -67,7 +67,31 @@ A point (`at`) is a region name, or `{ region, x, y }` with `x` and `y` as fract
 
 Keys are lowercase names: `a`–`z`, `0`–`9`, `f1`–`f12`, `space`, `enter`, `escape`, `tab`, `backspace`, `shift`, `control`, `alt`, `command`, `up`, `down`, `left`, `right`, `minus`, `equal`, `comma`, `period`, `slash`, `semicolon`, `quote`, `backquote`, `leftbracket`, `rightbracket`, `backslash`.
 
-Anything still held when a run ends is released.
+Anything still held when a run ends is released, and so is anything a state was holding when it timed out.
+
+### Routes
+
+`input.play(route, { until?, settle?, speed? })` replays a route: a list of timed actions, usually cut from a recording of the person playing with `wick route` (see [AI-AGENTS.md](AI-AGENTS.md#teaching-a-loop)). It goes through the same permissions and human profile as other input, and resolves to `{ reached, ms }`.
+
+```ts
+import toVendor from "./routes/to-vendor.js";
+
+const r = await ctx.input.play(toVendor, { until: () => prompt.seen, settle: 1000 });
+if (!r.reached) return "recover";
+```
+
+| Action | |
+| --- | --- |
+| `{ t, do: "hold", key, ms }` | Holds a key for `ms`. |
+| `{ t, do: "press", key, ms? }` | Taps a key. |
+| `{ t, do: "keyDown" \| "keyUp", key }` | Presses or releases a key. |
+| `{ t, do: "click", button?, at?, region?, ms? }` | Clicks; `at` is `[x, y]` as fractions of the viewport (or of `region`), or a point. |
+| `{ t, do: "turn", dx, dy?, ms? }` | Turns the camera, spread over `ms`. |
+| `{ t, do: "wait", ms }` | Nothing; makes the route last longer. |
+
+`t` is ms from the start of the route. When `until` returns true the route stops, letting go of any keys it holds, and `reached` is true. Without `until`, `reached` is true once the route ends. `settle` keeps checking `until` for that many ms after the last action, and `speed` scales the timing (2 plays twice as fast).
+
+Routes are only as good as the place they start from: begin each one from somewhere the macro can always get back to (the spawn after `character.reset()`, or a spot a check confirms), and end it with an `until` on something the screen shows on arrival. A route that doesn't arrive is a reason to recover, not to keep walking.
 
 ## Timing
 

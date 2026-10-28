@@ -26,6 +26,7 @@ To use the CLI from anywhere while running from source, link it once: `npm link`
 | `wick act click [--at R]`, `act press KEY`, … | `wick_act` | One input, to test something. |
 | `wick probe --track NAME:REGION:HEX --clicks N --every MS` | `wick_probe` | Follows colors for a few seconds while sending timed input, and returns each tracker's position over time. |
 | `wick record [--seconds S] [--region R] [--you] [--run]` | `wick_record` | Records up to 10 minutes: keyframes, a change score per sample, every input, a contact sheet of the moments that changed most (the MCP tool returns it as an image), and a storyboard. `--you` also logs your own clicks, keys and mouse motion in the game window, so an agent can watch you do something once. `--run` runs the macro meanwhile. |
+| `wick route [DIR] --steps A[-B] [--name NAME]` | `wick_route` | Cuts storyboard steps (or `--from S --to S`) out of a recording as a route, and with `--name` saves it as `routes/NAME.js` for `ctx.input.play`. |
 | `wick storyboard [DIR]` | `wick_storyboard` | A recording split into steps: what was held, pressed, clicked and turned in each, the waits between, where the screen changed all at once, and each step's start and end frame. Defaults to the newest recording. |
 | `wick regions`, `wick region set NAME …`, `wick region remove NAME` | `wick_regions`, `wick_set_region`, `wick_remove_region` | Read and edit `regions.json`. The app's live view updates as they change. |
 | `wick run [--seconds S] [--live] [--exact]` | `wick_run` | Runs the macro and waits for it to end. Returns how it ended, its stats and its log. On `sim` it runs instantly unless `--live`. Input goes through the app's human profile unless `--exact`. |
@@ -35,7 +36,7 @@ To use the CLI from anywhere while running from source, link it once: `npm link`
 | `wick stop` | `wick_stop` | Stops the running macro. |
 | `wick new NAME` | `wick_new_macro` | Creates a macro in the library. |
 
-Every command takes `--target roblox|testbench|sim` (default: the macro's target) and `--folder` (default: the nearest folder with a `wick.json`), and prints JSON.
+Every command takes `--target roblox|testbench|sim` (default: the macro's target) and `--folder` (default: the nearest folder with a `wick.json`), and prints JSON. On `sim`, `--scenario FILE` swaps in a different simulator setup.
 
 Agent input goes through the same gate as a macro's: only to the target window, only while it has focus, and F8 stops it. If the window doesn't have focus, `act` says so and sends nothing; the agent should ask you to click the game. Agents don't need a macro's declared permissions to test input, because they act for you, but the macros they write do.
 
@@ -57,8 +58,10 @@ For a task with several parts (fish until the bag is full, walk to the vendor, s
 1. **Pick a start point you can always get back to,** like right after a respawn (`character.reset()` gets the macro there too). The macro's recovery state goes back to it whenever something goes wrong.
 2. **Record one full loop:** `wick record --you --seconds 180` (or ask the agent to), then play it once at a normal pace from the start point. Pause for a second between parts; pauses are where steps split.
 3. **The agent reads the storyboard,** `storyboard.md`: each step with what you pressed, held, clicked and how far you turned the camera, the waits, and where the screen changed all at once (a menu opening, a minigame appearing). Each step names its start and end frame, which the agent opens to see what the screen looked like.
-4. **The agent turns steps into states:** walking parts become routes, menus become regions and `screen.similar` checks, minigames get probed and get their own controller, and "until the bag is full" becomes a counter or a check on the inventory.
+4. **The agent turns steps into states:** walking parts become routes (`wick route --steps 1 --name to-dock`, played with `ctx.input.play(toDock, { until: () => prompt.seen })`), menus become regions and `screen.similar` checks, minigames get probed and get their own controller, and "until the bag is full" becomes a check on the inventory (or a counter).
 5. **Test on `sim`, then live,** with the storyboard frames as the reference for what each state should see.
+
+`examples/fishing-trip` was made this way, from the scripted demonstration in its `demo.json`; the simulator's world (see [FORMAT.md](FORMAT.md#the-world)) lets you try the whole path without a game.
 
 ## Example probe
 

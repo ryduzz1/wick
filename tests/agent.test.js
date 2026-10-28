@@ -192,6 +192,27 @@ test('run history keeps each run with its log and trace', async () => {
   assert.throws(() => history.read('me/bar', '../x.json'), /Not a run file/);
 });
 
+test('a demonstration becomes routes that a macro walks', async () => {
+  // The fishing trip example, without its routes: record its scripted demo,
+  // cut the two walks out of the storyboard, and run the macro on them.
+  const trip = copyMacro(join(root, 'examples', 'fishing-trip'), dir, { author: 'tester' });
+  fs.rmSync(join(trip, 'routes'), { recursive: true });
+  const demo = JSON.parse(fs.readFileSync(join(trip, 'demo.json'), 'utf8'));
+  const rec = await commands.record({ folder: trip, target: 'sim', seconds: 14, you: true, scenario: demo });
+  assert.equal(rec.storyboard.steps, 7, rec.storyboard.outline.join('\n'));
+  assert.match(rec.storyboard.outline[3], /hold s 1\.3 s, d 1\.9 s, then press e/);
+  const toDock = await commands.route({ folder: trip, steps: '1', name: 'to-dock' });
+  assert.deepEqual(toDock.route.map((a) => a.do), ['hold', 'press']);
+  assert.equal(toDock.route[0].ms, 1333);
+  const toVendor = await commands.route({ folder: trip, steps: '4', name: 'To vendor' });
+  assert.ok(toVendor.file.endsWith(join('routes', 'to-vendor.js')));
+  assert.deepEqual(toVendor.route.map((a) => [a.do, a.key, a.t]), [['hold', 's', 0], ['hold', 'd', 1700], ['press', 'e', 4100]]);
+  const run = await commands.run({ folder: trip, target: 'sim', seconds: 45 });
+  assert.equal(run.end.reason, 'stopped', JSON.stringify(run.end));
+  assert.ok(run.score.world.sales >= 1, JSON.stringify(run.score));
+  assert.equal(run.timeouts, 0, JSON.stringify(run.logs));
+});
+
 test('the fishing loop example recovers on the simulator it describes', async () => {
   const fishing = copyMacro(join(root, 'examples', 'fishing-loop'), dir, { author: 'tester' });
   const r = await commands.run({ folder: fishing, target: 'sim', seconds: 45 });

@@ -84,7 +84,23 @@ export interface Input {
   press(key: string, options?: { hold?: number }): void;
   keyDown(key: string): void;
   keyUp(key: string): void;
+  /**
+   * Replays a route: timed holds, presses, clicks and turns, usually cut
+   * from a recording with `wick route`. Stops early, letting go of held
+   * keys, as soon as `until` returns true. `settle` waits that many more ms
+   * for `until` after the route ends; `speed` scales its timing.
+   */
+  play(route: readonly RouteAction[], options?: { until?: () => boolean; settle?: number; speed?: number }): Promise<{ reached: boolean; ms: number }>;
 }
+
+/** One step of a route. `t` is ms from the start of the route. */
+export type RouteAction =
+  | { t: number; do: "hold"; key: string; ms: number }
+  | { t: number; do: "press"; key: string; ms?: number }
+  | { t: number; do: "keyDown" | "keyUp"; key: string }
+  | { t: number; do: "click"; button?: Button; at?: [number, number] | Point; region?: string; ms?: number }
+  | { t: number; do: "turn"; dx: number; dy?: number; ms?: number }
+  | { t: number; do: "wait"; ms: number };
 
 export interface Loop {
   /**

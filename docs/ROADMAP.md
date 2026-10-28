@@ -79,9 +79,15 @@ Built as one large pass:
 - **Your mouse:** `record --you` now logs mouse motion (summed per sample as `"mouse"` lines, with raw deltas so camera turns show up even while the game locks the cursor) and modifier keys on their own (shift, control, alt, command) on macOS. Windows logs motion from the low-level mouse hook.
 - **Storyboards:** every recording gets `storyboard.md`, `storyboard.json` and `storyboard.png`: the recording split into steps at pauses, waits and scene changes, each with a label ("hold w 2.0 s, then mouse right 200, then press e"), its actions with times, and its start and end frames. `wick storyboard` and `wick_storyboard` rebuild and return it.
 
-Still to do in this pass: a simulated world to test demonstrations end to end, routes (replaying a stretch of a recording through the human profile), template matching, and OCR.
+- **Simulated world** (`sim_world.rs`): with `"world": {}` the bar sits in a top-down world with walking along a heading that mouse turns rotate, a dock that starts rounds, a bag that fills with won rounds, and a vendor with a sell menu. A reset goes back to the spawn.
+- **Scripted demonstrations:** the simulator's `demo` field plays a person's input into the game and reports it as heard, so `record --you` works headlessly. `--scenario FILE` on the CLI swaps in a simulator setup.
+- **Routes:** `ctx.input.play(route, { until, settle, speed })` replays timed holds, presses, clicks and turns through the permissions and human profile, stopping and letting go of held keys when `until` is true. `wick route` and `wick_route` cut storyboard steps or a time range out of a recording and save them as `routes/NAME.js`.
+- States that time out now let go of the keys and buttons they were holding.
+- **Example:** `examples/fishing-trip`: spawn to dock, fish until the bag is full, walk to the vendor, sell, reset, repeat, with routes made from its `demo.json`.
 
-**Verification so far:** storyboard tests split a synthetic demonstration (walk with a camera turn, press E, wait for a scene change, ten clicks, walk) into exactly the expected five steps and labels, and an idle recording into one wait; a PNG round-trip test; a Node test records the sim with the macro running and reads its storyboard back through the command layer. The Windows motion hook type-checks with `cargo clippy --target x86_64-pc-windows-msvc`. The example-macro Node test now pins its human-profile seeds, which made it flaky before.
+Still to do in this pass: template matching and OCR.
+
+**Verification so far:** storyboard tests split a synthetic demonstration (walk with a camera turn, press E, wait for a scene change, ten clicks, walk) into exactly the expected five steps and labels, and an idle recording into one wait; a PNG round-trip test. World tests cover walking along a turned heading, filling the bag, a full bag not casting, the sell menu blocking movement and selling, reset to spawn, and the prompt. Session tests: a route stops where `until` fires, within reach of the dock; holds and a quarter turn replay to the expected position and heading; a timed-out state stops walking at the timeout; a scripted demonstration records into exactly the expected seven storyboard steps. A Node test runs the whole path through the command layer: record the fishing trip's demo, cut two routes from the storyboard, and run the macro on them with human input until it sells a bag without a timeout. (Run by hand, the example made two full trips in 70 s.) The Windows motion hook type-checks with `cargo clippy --target x86_64-pc-windows-msvc`. The example-macro Node test now pins its human-profile seeds, which made it flaky before.
 
 ## Still to test by hand
 
@@ -92,6 +98,7 @@ Kept for the end-to-end test once the app is finished:
 - Agent tools on a real window: `observe`, `detect`, `probe` and `act` on the test bench; Claude Code building a macro from a new folder.
 - Human input: watch the mouse paths and click timing on the test bench at a few precision values; the example should still keep up at 0.85.
 - `wick record --you` on the test bench: your clicks and keys show up in `record.jsonl` with the right positions, Wick's own clicks are marked `wick`, and nothing is logged while another window has focus.
+- Teach a loop for real: record one trip in a Roblox game with `--you`, cut routes with `wick route`, and check that `ctx.input.play` walks the same way with the human profile on (camera turns included).
 - `wick record --you --seconds 120` in a Roblox game: mouse turns while right-dragging or in shift lock show up as `"mouse"` lines, shift on its own is heard, and `storyboard.md` splits a walk–interact–wait loop into sensible steps.
 - The trace graph and the Runs card during and after a live run on the test bench.
 - `character.reset()` in a Roblox game that allows macros: the menu opens, R and Enter land, and the macro carries on once you respawn.
