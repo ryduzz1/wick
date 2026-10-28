@@ -177,7 +177,7 @@ pub fn list_windows() -> Vec<WindowInfo> {
 
 pub fn frontmost_window() -> Option<u64> {
     let window = unsafe { GetForegroundWindow() };
-    (!window.0.is_null()).then(|| window.0 as usize as u64)
+    (!window.0.is_null()).then_some(window.0 as usize as u64)
 }
 
 pub fn permissions() -> Permissions {
