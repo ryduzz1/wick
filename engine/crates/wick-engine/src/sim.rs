@@ -530,6 +530,9 @@ pub struct SimTarget {
     frame: Frame,
     realtime: bool,
     started: Instant,
+    /// The game has focus from this time on (ms), for tests of runs that
+    /// start while another window is in front.
+    pub focus_at_ms: f64,
 }
 
 impl SimTarget {
@@ -550,6 +553,7 @@ impl SimTarget {
             frame,
             realtime,
             started: Instant::now(),
+            focus_at_ms: 0.0,
         }
     }
 }
@@ -602,7 +606,7 @@ impl Target for SimTarget {
     }
 
     fn focused(&mut self) -> bool {
-        true
+        self.now_ms() >= self.focus_at_ms
     }
 
     fn latency(&self) -> f64 {

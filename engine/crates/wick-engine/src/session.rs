@@ -175,6 +175,13 @@ fn session_loop(
                             );
                             r.trace = Some(Vec::new());
                             r.input.logging = true;
+                            // The run waits for the game to have focus; save
+                            // the person a click by switching to it.
+                            if !target.focused() {
+                                if let Err(e) = target.bring_to_front() {
+                                    emitter.event("macro.log", json!({ "text": e, "at": 0 }));
+                                }
+                            }
                             run = Some((r, kills.load(Ordering::SeqCst)));
                             let _ = reply.send(Ok(()));
                         }
@@ -635,6 +642,35 @@ mod tests {
             .collect();
         let avg = scores.iter().sum::<f64>() / scores.len() as f64;
         assert!(avg > 0.8, "scores {scores:?}");
+    }
+
+    #[test]
+    fn a_run_waits_for_focus_before_it_starts() {
+        let main = r##"
+            export default { async run(ctx) {
+              ctx.log(`started at ${ctx.now()}`);
+              ctx.input.click();
+            } };
+        "##;
+        let mut target = SimTarget::new(Scenario::default(), false);
+        target.focus_at_ms = 500.0;
+        let mut run = MacroRun::start(spec(main, &["mouse.click"]), &target).unwrap();
+        let mut logs = Vec::new();
+        let mut end = None;
+        while end.is_none() && target.now_ms() < 2000.0 {
+            let frame = target.next_frame(Duration::ZERO);
+            end = run.tick(&mut target, frame.as_deref(), &mut |_, v| {
+                logs.push(v["text"].as_str().unwrap_or_default().to_string())
+            });
+        }
+        assert!(matches!(end, Some(RunEnd::Done)));
+        assert_eq!(
+            logs[0],
+            "Waiting for the game to have focus. Click into its window to start."
+        );
+        assert_eq!(logs[1], "started at 0");
+        assert_eq!(run.input.dropped, 0);
+        assert!(target.now_ms() > 500.0);
     }
 
     #[test]

@@ -117,6 +117,12 @@ pub fn is_frontmost(window: &WindowInfo) -> bool {
     frontmost_pid() == Some(window.pid)
 }
 
+/// Brings `window` (its app, on macOS) to the front so it gets keyboard and
+/// mouse focus.
+pub fn bring_to_front(window: &WindowInfo) -> Result<(), String> {
+    imp::bring_to_front(window)
+}
+
 pub fn permissions() -> Permissions {
     imp::permissions()
 }

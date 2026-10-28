@@ -106,6 +106,10 @@ pub struct MacroRun {
     /// While set, each frame's tracker positions are kept for the app's graph.
     pub trace: Option<Vec<Value>>,
     started_ms: f64,
+    /// Whether the macro has started: it waits for the target to have focus
+    /// first, so input it sends at the start isn't dropped while the person
+    /// switches to the game.
+    begun: bool,
     viewport: Rect,
     pub loops: u64,
     pub ticks: u64,
@@ -164,6 +168,7 @@ impl MacroRun {
             input,
             trace: None,
             started_ms: target.now_ms(),
+            begun: false,
             viewport: target.viewport(),
             loops: 0,
             ticks: 0,
@@ -363,8 +368,23 @@ impl MacroRun {
         emit: &mut dyn FnMut(&str, Value),
     ) -> Option<RunEnd> {
         self.ticks += 1;
-        let now = target.now_ms() - self.started_ms;
         let focused = target.focused();
+        if !self.begun {
+            if !focused {
+                if self.ticks == 1 {
+                    emit(
+                        "macro.log",
+                        json!({ "text": "Waiting for the game to have focus. Click into its window to start.", "at": 0 }),
+                    );
+                }
+                return None;
+            }
+            // The macro's clock starts now, so its waits and timeouts don't
+            // count the time spent switching windows.
+            self.begun = true;
+            self.started_ms = target.now_ms();
+        }
+        let now = target.now_ms() - self.started_ms;
         if let Some(frame) = frame {
             self.viewport = target.viewport();
             for i in 0..self.trackers.len() {

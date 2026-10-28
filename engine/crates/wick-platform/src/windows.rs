@@ -48,10 +48,11 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, EnumWindows, GetClientRect, GetForegroundWindow, GetMessageW, GetWindowTextW,
     GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostThreadMessageW, SetCursorPos,
-    SetWindowsHookExW, UnhookWindowsHookEx, HC_ACTION, KBDLLHOOKSTRUCT, LLKHF_INJECTED,
-    LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_HOTKEY, WM_KEYDOWN,
-    WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_QUIT,
-    WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    SetForegroundWindow, SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx, HC_ACTION,
+    KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, SW_RESTORE,
+    WH_KEYBOARD_LL, WH_MOUSE_LL, WM_HOTKEY, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
 use crate::{Bounds, FrameSink, MouseButton, Permissions, WindowInfo};
@@ -189,6 +190,26 @@ pub fn frontmost_pid() -> Option<u32> {
     let mut pid = 0u32;
     unsafe { GetWindowThreadProcessId(window, Some(&mut pid)) };
     (pid != 0).then_some(pid)
+}
+
+/// Brings `window` to the front, restoring it if it's minimized. Windows
+/// allows this because the engine is started by the app the person just
+/// clicked in.
+pub fn bring_to_front(window: &WindowInfo) -> Result<(), String> {
+    let hwnd = HWND(window.id as usize as *mut _);
+    unsafe {
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        if SetForegroundWindow(hwnd).as_bool() {
+            Ok(())
+        } else {
+            Err(format!(
+                "Windows didn't let Wick bring {} to the front.",
+                window.owner
+            ))
+        }
+    }
 }
 
 pub fn permissions() -> Permissions {

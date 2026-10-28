@@ -209,6 +209,16 @@ impl Target for WindowTarget {
         focused
     }
 
+    fn bring_to_front(&mut self) -> Result<(), String> {
+        let Some(w) = &self.window else {
+            return Ok(());
+        };
+        wick_platform::bring_to_front(w)?;
+        // Check focus again on the next call instead of trusting the cache.
+        self.focus = (None, false);
+        Ok(())
+    }
+
     fn latency(&self) -> f64 {
         DEFAULT_LATENCY
     }

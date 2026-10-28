@@ -23,6 +23,7 @@ extern "C" {
         accurate: c_int,
     ) -> *mut c_char;
     fn wick_mac_list_windows() -> *mut c_char;
+    fn wick_mac_app_path(pid: c_int) -> *mut c_char;
     fn wick_mac_screen_permission() -> c_int;
     fn wick_mac_accessibility_permission(prompt: c_int) -> c_int;
     fn wick_mac_request_screen_permission();
@@ -108,6 +109,31 @@ pub fn frontmost_pid() -> Option<u32> {
         .into_iter()
         .find(|w| w.layer == 0)
         .map(|w| w.pid)
+}
+
+/// Brings the app that owns `window` to the front. Opening a running app
+/// through Launch Services (as `open -a` does) activates it; a background
+/// process can't activate another app directly on macOS 14 and later.
+pub fn bring_to_front(window: &WindowInfo) -> Result<(), String> {
+    let path = take_string(unsafe { wick_mac_app_path(window.pid as c_int) });
+    if path.is_empty() {
+        return Err(format!(
+            "Couldn't find the app that owns \"{}\".",
+            window.owner
+        ));
+    }
+    match std::process::Command::new("open")
+        .arg("-a")
+        .arg(&path)
+        .status()
+    {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!(
+            "Couldn't bring {} to the front ({s}).",
+            window.owner
+        )),
+        Err(e) => Err(format!("Couldn't bring {} to the front: {e}", window.owner)),
+    }
 }
 
 pub fn permissions() -> Permissions {

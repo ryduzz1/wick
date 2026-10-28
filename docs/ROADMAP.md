@@ -120,6 +120,7 @@ Built as one large pass:
 
 - On macOS, Wick can only see windows on the current screen, so a fullscreen Roblox in another Space disappears when you switch away. Agent tools used to hand back the last frame with a zero-size viewport (so every region collapsed); `observe`, `detect` and `read` now refuse and say to switch to the game, or keep it windowed.
 - Roblox on macOS keeps a small window of its own (the menu button) in front of the game window, so Wick never saw the game as focused: a `record --you` heard none of the player's input, and a macro's input would have been dropped. Focus is now compared by process (the app with keyboard focus) on macOS and Windows.
+- Pressing Run left Wick in front, so a macro's first click (Fish, in the first real macro) was dropped and the macro waited forever for what that click should have started. A run now waits for the game to have focus before its first step (its clock starts then, and it logs that it's waiting), and Run brings the game's window to the front (`open -a` on its app on macOS, `SetForegroundWindow` on Windows). Tested on the simulator with a game that gets focus late; bringing Roblox to the front is untested by hand.
 - A Sol's RNG fishing minigame draws its target zone in a different color every round, which one `color` can't follow. `screen.track` (and `wick detect`, `wick probe` and the MCP tools) now take `except: [colors]`, which follows anything that isn't one of those colors: list the bar's background and fill and what's left is the zone. Tested in the engine (unit test, and the simulator's bar game played with the zone found this way) and against a recorded real minigame (offline replay of the detection; not yet run live).
 
 ## Still to test by hand
@@ -142,6 +143,7 @@ Kept for the end-to-end test once the app is finished:
 - The mini window over Roblox (windowed and fullscreen): it stays on top, clicking Stop doesn't break the game's focus for the next run, it doesn't show up in Wick's live view, and its position is remembered.
 - The packaged app: install the dmg (right-click → Open while unsigned) and the Windows installer, grant permissions to "Wick", double-click a `.wick`, open a `wick://install?url=` link, and run `Resources/bin/wick` / `wick.cmd` from a terminal.
 - The Sol's RNG fishing macro (in the maintainer's library, not the repo) at a fishing spot: casts, reels, closes the "Fish Caught!" popup, and stops after three missed Fish buttons. Selling and walking back are next, once there's a way to tell the bag is full.
+- Run brings Roblox to the front on macOS and Windows, and the run starts only once it has focus.
 - Everything on Windows.
 
 ## Build plan

@@ -77,6 +77,18 @@ char *wick_mac_list_windows(void) {
     }
 }
 
+// MARK: - Activation
+
+// The bundle path of the app that owns process `pid`, or NULL. Free with
+// wick_mac_free.
+char *wick_mac_app_path(int pid) {
+    @autoreleasepool {
+        NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+        NSString *path = app.bundleURL.path;
+        return path ? strdup(path.UTF8String) : NULL;
+    }
+}
+
 // MARK: - Permissions
 
 int wick_mac_screen_permission(void) { return CGPreflightScreenCaptureAccess() ? 1 : 0; }

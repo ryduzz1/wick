@@ -25,6 +25,10 @@ pub fn frontmost_pid() -> Option<u32> {
     None
 }
 
+pub fn bring_to_front(_window: &WindowInfo) -> Result<(), String> {
+    Err("Bringing a window to the front isn't supported on this platform.".into())
+}
+
 pub fn permissions() -> Permissions {
     Permissions {
         screen_recording: false,

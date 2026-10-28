@@ -36,6 +36,10 @@ pub trait Target {
     /// The game area inside the frame, in frame pixels.
     fn viewport(&self) -> Rect;
     fn focused(&mut self) -> bool;
+    /// Brings the target's window to the front, when it has one.
+    fn bring_to_front(&mut self) -> Result<(), String> {
+        Ok(())
+    }
     /// Estimated delay from sending input to the game reacting, in seconds.
     fn latency(&self) -> f64;
     fn send(&mut self, action: &Action) -> Result<(), String>;
