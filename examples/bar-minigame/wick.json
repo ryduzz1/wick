@@ -1,0 +1,16 @@
+{
+  "wick": 1,
+  "id": "wick/bar-minigame",
+  "name": "Bar minigame",
+  "version": "0.1.0",
+  "description": "Keeps the tick inside the moving zone.",
+  "author": "wick",
+  "target": "testbench",
+  "entry": "main.ts",
+  "permissions": ["mouse.click"],
+  "settings": {
+    "minGap": { "type": "number", "min": 10, "max": 500, "default": 60, "label": "Minimum time between clicks (ms)" },
+    "lead": { "type": "number", "min": 0, "max": 4, "default": 1, "label": "Look-ahead, in multiples of input latency" },
+    "seconds": { "type": "number", "min": 0, "default": 0, "label": "Stop after (seconds, 0 = until the bar disappears)" }
+  }
+}
