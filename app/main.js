@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EngineClient, enginePath } from './engine-client.js';
+import * as library from './library.js';
 import { checkManifest, loadMacro, MacroError } from './macro-loader.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -18,6 +19,7 @@ let bench = null;
 // The target the engine's session is watching, so a run can reuse it.
 let sessionTarget = null;
 let askedForPermissions = false;
+let macroWatcher = null;
 // Macro folders shown in the app: the bundled examples plus any the user opened.
 const preferencesPath = () => path.join(app.getPath('userData'), 'preferences.json');
 
@@ -42,10 +44,14 @@ function exampleFolders() {
   return fs.readdirSync(dir).map((name) => path.join(dir, name)).filter((p) => fs.existsSync(path.join(p, 'wick.json')));
 }
 
+const libraryDir = () => process.env.WICK_LIBRARY || preferences().library || library.defaultLibrary();
+
 function macroFolders() {
   const opened = (preferences().folders ?? []).filter((p) => fs.existsSync(path.join(p, 'wick.json')));
-  return [...new Set([...exampleFolders(), ...opened])];
+  return [...new Set([...library.listLibrary(libraryDir()), ...opened, ...exampleFolders()])];
 }
+
+const inLibrary = (folder) => path.dirname(folder) === path.resolve(libraryDir());
 
 function describeMacro(folder) {
   let manifest;
@@ -55,9 +61,20 @@ function describeMacro(folder) {
     return { folder, error: `wick.json couldn't be read: ${e.message}` };
   }
   const problems = checkManifest(manifest);
+  let regions = {};
+  try {
+    regions = library.readRegions(folder);
+  } catch (e) {
+    problems.push(`regions.json couldn't be read: ${e.message}`);
+  }
+  const example = exampleFolders().includes(folder);
   return {
     folder,
-    example: exampleFolders().includes(folder),
+    example,
+    editable: !example,
+    inLibrary: inLibrary(folder),
+    entry: manifest.entry ?? 'main.ts',
+    regions,
     id: manifest.id,
     name: manifest.name ?? path.basename(folder),
     description: manifest.description ?? '',
@@ -119,6 +136,65 @@ const actions = {
     const folders = preferences().folders ?? [];
     if (!folders.includes(folder)) savePreferences({ folders: [...folders, folder] });
     return describeMacro(folder);
+  },
+  async newMacro({ name, target }) {
+    return describeMacro(library.createMacro(libraryDir(), { name, target }));
+  },
+  copyMacro: ({ folder }) => describeMacro(library.copyMacro(folder, libraryDir())),
+  async deleteMacro({ folder }) {
+    if (exampleFolders().includes(folder)) throw new MacroError('Examples come with Wick and can\'t be deleted.');
+    const name = describeMacro(folder).name ?? path.basename(folder);
+    if (inLibrary(folder)) {
+      const { response } = await dialog.showMessageBox(window, {
+        type: 'warning',
+        buttons: ['Move to Trash', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        message: `Move "${name}" to the Trash?`,
+        detail: 'You can put it back from the Trash.',
+      });
+      if (response !== 0) return false;
+      await shell.trashItem(folder);
+    } else {
+      savePreferences({ folders: (preferences().folders ?? []).filter((f) => f !== folder) });
+    }
+    return true;
+  },
+  saveRegions({ folder, regions }) {
+    if (!describeMacro(folder).editable) throw new MacroError('Examples can\'t be edited. Make a copy first.');
+    return library.saveRegions(folder, regions);
+  },
+  updateManifest({ folder, changes }) {
+    if (!describeMacro(folder).editable) throw new MacroError('Examples can\'t be edited. Make a copy first.');
+    library.updateManifest(folder, changes);
+    return describeMacro(folder);
+  },
+  describe: ({ folder }) => describeMacro(folder),
+  editCode({ folder }) {
+    const entry = path.join(folder, describeMacro(folder).entry);
+    return shell.openPath(fs.existsSync(entry) ? entry : folder);
+  },
+  watchMacro({ folder }) {
+    macroWatcher?.close();
+    macroWatcher = null;
+    if (!folder || !fs.existsSync(folder)) return;
+    let timer = null;
+    try {
+      macroWatcher = fs.watch(folder, { recursive: true }, (_type, file) => {
+        if (file && /(^|[\\/])\./.test(file)) return;
+        clearTimeout(timer);
+        timer = setTimeout(() => forward('macro.changed', { folder }), 200);
+      });
+    } catch {
+      // Watching is a convenience; without it the user reselects the macro.
+    }
+  },
+  libraryInfo: () => ({ folder: libraryDir() }),
+  async chooseLibrary() {
+    const result = await dialog.showOpenDialog(window, { title: 'Choose the library folder', properties: ['openDirectory', 'createDirectory'] });
+    if (result.canceled || !result.filePaths[0]) return null;
+    savePreferences({ library: result.filePaths[0] });
+    return { folder: result.filePaths[0] };
   },
   saveSettings({ id, values }) {
     const all = preferences().settings ?? {};
@@ -189,11 +265,43 @@ async function smokeReport() {
     fps: document.getElementById('fpsText').textContent,
     previewDrawn: document.getElementById('liveEmpty').classList.contains('hidden'),
   })`);
+  // Exercise the editor: create a macro, drag its region, and check a color.
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const js = (code) => window.webContents.executeJavaScript(code);
+  await js(`document.getElementById('newMacro').click()`);
+  await sleep(300);
+  await js(`(() => {
+    const f = document.getElementById('newForm');
+    f.elements.name.value = 'Smoke test';
+    f.elements.target.value = 'sim';
+    f.querySelector('button[value=create]').click();
+  })()`);
+  await sleep(1500);
+  shown.created = await js(`document.getElementById('macroName').textContent`);
+  shown.regions = await js(`[...document.querySelectorAll('.region-row')].map((r) => r.dataset.name)`);
+  await js(`(() => {
+    const c = document.getElementById('liveCanvas');
+    const b = c.getBoundingClientRect();
+    const at = (type, x, y) => c.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, clientX: x, clientY: y }));
+    const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+    at('pointerdown', cx, cy); at('pointermove', cx + 60, cy + 20); at('pointerup', cx + 60, cy + 20);
+    at('pointerdown', b.left + 3, b.top + 3); at('pointerup', b.left + 3, b.top + 3);
+    const hex = document.getElementById('colorHex');
+    hex.value = '#3ccf5a';
+    hex.dispatchEvent(new Event('input'));
+  })()`);
+  await sleep(800);
+  const smokeFolder = path.join(libraryDir(), 'smoke-test');
+  shown.movedRegion = fs.existsSync(smokeFolder) ? library.readRegions(smokeFolder).area : null;
+  shown.matches = await js(`document.getElementById('matchText').textContent`);
   if (process.env.WICK_SMOKE_SHOT) {
+    if (process.env.WICK_SMOKE_SCROLL) await js(`document.querySelector('main').scrollTop = ${Number(process.env.WICK_SMOKE_SCROLL)}`);
+    await sleep(100);
     const image = await window.webContents.capturePage();
     fs.writeFileSync(process.env.WICK_SMOKE_SHOT, image.toPNG());
   }
-  const ok = errors.length === 0 && shown.engine === 'Engine running' && Boolean(shown.macro) && shown.previewDrawn;
+  const ok = errors.length === 0 && shown.engine === 'Engine running' && Boolean(shown.macro) && shown.previewDrawn &&
+    shown.created === 'Smoke test' && shown.regions.includes('area') && shown.movedRegion?.x > 0 && /^[1-9]\d* px/.test(shown.matches);
   process.stdout.write(`WICK_SMOKE ${JSON.stringify({ ok, shown, errors })}\n`);
   app.exit(ok ? 0 : 1);
 }
@@ -226,7 +334,7 @@ app.whenReady().then(async () => {
       ...(process.platform === 'darwin'
         ? [{ label: 'Wick', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }]
         : []),
-      { label: 'File', submenu: [{ label: 'Open Macro Folder…', accelerator: 'CmdOrCtrl+O', click: () => forward('app.openMacro', {}) }, { label: 'Open Test Bench', click: openTestBench }, { role: process.platform === 'darwin' ? 'close' : 'quit' }] },
+      { label: 'File', submenu: [{ label: 'New Macro…', accelerator: 'CmdOrCtrl+N', click: () => forward('app.newMacro', {}) }, { label: 'Open Macro Folder…', accelerator: 'CmdOrCtrl+O', click: () => forward('app.openMacro', {}) }, { label: 'Open Test Bench', click: openTestBench }, { role: process.platform === 'darwin' ? 'close' : 'quit' }] },
       { role: 'editMenu' },
       { role: 'windowMenu' },
     ]),

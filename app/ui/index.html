@@ -11,8 +11,8 @@
   <aside class="sidebar">
     <div class="window-space"></div>
     <div class="brand"><span class="mark glyph">w</span><span>Wick</span><span class="version" id="appVersion"></span></div>
-    <button id="openMacro" class="sidebar-action"><span data-icon="plus"></span>Open macro folder<span class="shortcut" id="openShortcut">⌘ O</span></button>
-    <div class="sidebar-label">Macros</div>
+    <button id="newMacro" class="sidebar-action"><span data-icon="plus"></span>New macro<span class="shortcut" id="newShortcut">⌘ N</span></button>
+    <button id="openMacro" class="sidebar-action"><span data-icon="folder"></span>Open macro folder<span class="shortcut" id="openShortcut">⌘ O</span></button>
     <div id="macroList" class="macro-list"></div>
     <div class="sidebar-bottom">
       <div id="engineStatus" class="engine-status">
@@ -44,7 +44,8 @@
       <section id="emptyView" class="welcome hidden">
         <span class="mark large"></span>
         <h1>No macros yet</h1>
-        <p>Open a folder that contains a <code>wick.json</code>.</p>
+        <p>Create one, or open a folder that contains a <code>wick.json</code>.</p>
+        <div class="actions centered"><button id="emptyNew" class="primary">New macro</button></div>
       </section>
 
       <section id="macroView" class="view hidden">
@@ -62,6 +63,8 @@
           <div class="run-state" role="status"><span id="stateDot" class="dot"></span><span id="stateLabel">Ready</span></div>
           <span class="spacer"></span>
           <button id="simulateButton" class="quiet small-button" title="Run on the simulator as fast as possible, over 5 different games"><span data-icon="flask"></span>Test on simulator</button>
+          <button id="copyButton" class="quiet small-button hidden" title="Copy this example into your library so you can change it"><span data-icon="copy"></span>Make a copy</button>
+          <button id="editCode" class="quiet small-button hidden"><span data-icon="code"></span>Edit code</button>
           <button id="showFolder" class="quiet small-button"><span data-icon="folder"></span>Show folder</button>
         </div>
 
@@ -69,12 +72,18 @@
           <div class="live-frame">
             <canvas id="liveCanvas" width="960" height="540"></canvas>
             <div id="liveEmpty" class="live-empty"><span data-icon="monitor"></span><b id="liveEmptyTitle">Nothing to show yet</b><span id="liveEmptyText"></span></div>
+            <div class="live-tools" role="toolbar" aria-label="Live view tools">
+              <button id="toolSelect" class="tool" aria-pressed="true" title="Select, move and resize regions"><span data-icon="pointer"></span>Select</button>
+              <button id="toolAdd" class="tool" aria-pressed="false" title="Drag on the frame to draw a new region"><span data-icon="square"></span>Add region</button>
+              <button id="toolPick" class="tool" aria-pressed="false" title="Click the frame to pick a color"><span data-icon="drop"></span>Pick color</button>
+            </div>
             <div class="layer-toggles">
               <label><input type="checkbox" id="showRegions" checked>Regions</label>
+              <label><input type="checkbox" id="showMatches" checked>Matches</label>
               <label><input type="checkbox" id="showTrackers" checked>Trackers</label>
             </div>
           </div>
-          <div class="frame-bar"><span id="fpsText">— fps</span><span id="tickText">— ms/tick</span><span id="latencyText">— ms latency</span><span id="windowText"></span></div>
+          <div class="frame-bar"><span id="fpsText">— fps</span><span id="tickText">— ms/tick</span><span id="latencyText">— ms latency</span><span id="hoverText"></span><span id="windowText"></span></div>
         </div>
 
         <div class="tiles">
@@ -91,6 +100,25 @@
 
         <div class="columns">
           <section class="card">
+            <div class="section-title"><h2>Regions</h2><button id="addRegion" class="quiet small-button"><span data-icon="plus"></span>Add</button></div>
+            <p id="regionsHint" class="muted small"></p>
+            <div id="regionList" class="region-list"></div>
+          </section>
+          <section class="card">
+            <div class="section-title"><h2>Color</h2><span id="matchText" class="count-pill hidden"></span></div>
+            <div class="color-row">
+              <span id="colorSwatch" class="swatch"></span>
+              <input id="colorHex" class="mono-input" placeholder="#rrggbb" spellcheck="false" maxlength="7" aria-label="Color">
+              <button id="pickButton" class="small-button"><span data-icon="drop"></span>Pick</button>
+            </div>
+            <label class="range-label">Tolerance <b id="toleranceText">30</b><input id="tolerance" type="range" min="0" max="120" value="30"></label>
+            <p class="muted small">Pixels that match are tinted on the live view, inside the selected region or the whole game area. Use this in a macro as:</p>
+            <div class="snippet"><code id="snippet"></code><button id="copySnippet" class="quiet small-button"><span data-icon="copy"></span>Copy</button></div>
+          </section>
+        </div>
+
+        <div class="columns">
+          <section class="card">
             <div class="section-title"><h2>Settings</h2></div>
             <form id="settingsForm" class="settings-form"></form>
             <p id="noSettings" class="muted hidden">This macro has no settings.</p>
@@ -100,9 +128,31 @@
             <ol id="runLog" class="run-log"></ol>
           </section>
         </div>
+
+        <section id="detailsCard" class="card">
+          <div class="section-title"><h2>Macro</h2><span id="macroId" class="count-pill"></span></div>
+          <form id="detailsForm" class="details-form">
+            <label>Name<input name="name" type="text" maxlength="80"></label>
+            <label>Description<input name="description" type="text" maxlength="200"></label>
+            <label>Target<select name="target"><option value="roblox">Roblox</option><option value="testbench">Test bench</option><option value="sim">Simulator</option></select></label>
+            <fieldset><legend>Input it may send</legend><div id="permissionBoxes" class="permission-boxes"></div></fieldset>
+          </form>
+          <p id="detailsNote" class="muted small"></p>
+          <div class="actions"><button id="deleteMacro" class="small-button danger"></button></div>
+        </section>
       </section>
     </main>
   </div>
+
+  <dialog id="newDialog">
+    <form method="dialog" id="newForm">
+      <h2>New macro</h2>
+      <p id="newWhere" class="small"></p>
+      <label>Name<input name="name" type="text" maxlength="80" placeholder="Fishing loop" required></label>
+      <label>Target<select name="target"><option value="roblox">Roblox</option><option value="testbench">Test bench</option><option value="sim">Simulator</option></select></label>
+      <div class="actions end"><button value="cancel" formnovalidate>Cancel</button><button value="create" class="primary">Create</button></div>
+    </form>
+  </dialog>
 
   <div id="toasts" class="toasts" aria-live="polite"></div>
   <script type="module" src="app.js"></script>

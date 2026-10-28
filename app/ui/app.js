@@ -1,4 +1,7 @@
-// Wick's window: macro list, target picker, live view, run controls and log.
+// Wick's window: macro list, target picker, live view and editor, run
+// controls and log.
+
+import { LiveView, parseHex, rectRegion } from './live.js';
 
 const $ = (id) => document.getElementById(id);
 const wick = window.wick;
@@ -12,10 +15,24 @@ const ICONS = {
   flask: '<path d="M6 2h4M7 2v4L3.5 12.5A1 1 0 0 0 4.4 14h7.2a1 1 0 0 0 .9-1.5L9 6V2"/><path d="M5 10h6"/>',
   bolt: '<path d="M9 2 4 9h4l-1 5 5-7H8z"/>',
   macro: '<path d="M3 4h10M3 8h6M3 12h8"/>',
+  copy: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2"/>',
+  code: '<path d="m5.5 4.5-3.5 3.5 3.5 3.5M10.5 4.5l3.5 3.5-3.5 3.5"/>',
+  pointer: '<path d="M4 2.5v10l3-2.8 2 4.3 1.6-.7-2-4.2H13z"/>',
+  square: '<rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2.5 2"/>',
+  drop: '<path d="M8 2.2S4 6.6 4 9.6a4 4 0 0 0 8 0c0-3-4-7.4-4-7.4z"/>',
+  close: '<path d="m4 4 8 8M12 4l-8 8"/>',
 };
 
 const TARGET_LABELS = { sim: 'Simulator', testbench: 'Test bench', roblox: 'Roblox' };
 const TARGET_ORDER = ['sim', 'testbench', 'roblox'];
+const ANCHORS = ['top-left', 'top-center', 'top-right', 'center-left', 'center', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+const PERMISSION_LABELS = {
+  'mouse.click': 'Click',
+  'mouse.move': 'Move the mouse',
+  keyboard: 'Press keys',
+  'character.reset': 'Reset character',
+  'game.rejoin': 'Rejoin the game',
+};
 
 const state = {
   macros: [],
@@ -26,6 +43,7 @@ const state = {
   lastStats: null,
   sessionStats: null,
   permissions: null,
+  selectedRegion: null,
 };
 
 function icons(root = document) {
@@ -72,6 +90,7 @@ const fmtSeconds = (ms) => {
   return s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` : `${s}s`;
 };
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
+const editable = () => Boolean(state.selected?.editable) && !state.running;
 
 // MARK: Run state
 
@@ -84,6 +103,7 @@ function setRunState(kind, label) {
   $('stopButton').classList.toggle('hidden', !running);
   for (const b of $('targetPicker').querySelectorAll('button')) b.disabled = running;
   renderMacroList();
+  renderEditing();
 }
 
 function refreshRunLabel() {
@@ -100,17 +120,29 @@ function refreshRunLabel() {
 function renderMacroList() {
   const list = $('macroList');
   list.replaceChildren();
-  for (const m of state.macros) {
-    const b = document.createElement('button');
-    b.className = 'macro-item';
-    if (state.selected?.folder === m.folder) b.classList.add('selected');
-    if (state.running?.folder === m.folder) b.classList.add('running');
-    b.innerHTML = '<span data-icon="macro"></span><span></span><small></small>';
-    b.children[1].textContent = m.name;
-    b.children[2].textContent = m.example ? 'example' : '';
-    b.title = m.error ?? m.folder;
-    b.onclick = () => select(m);
-    list.append(b);
+  const groups = [
+    ['Library', state.macros.filter((m) => m.inLibrary)],
+    ['Opened', state.macros.filter((m) => !m.inLibrary && !m.example)],
+    ['Examples', state.macros.filter((m) => m.example)],
+  ];
+  for (const [title, macros] of groups) {
+    if (!macros.length) continue;
+    const label = document.createElement('div');
+    label.className = 'macro-group';
+    label.textContent = title;
+    list.append(label);
+    for (const m of macros) {
+      const b = document.createElement('button');
+      b.className = 'macro-item';
+      if (state.selected?.folder === m.folder) b.classList.add('selected');
+      if (state.running?.folder === m.folder) b.classList.add('running');
+      b.innerHTML = '<span data-icon="macro"></span><span></span><small></small>';
+      b.children[1].textContent = m.name;
+      b.children[2].textContent = m.error ? 'problem' : '';
+      b.title = m.error ?? m.folder;
+      b.onclick = () => select(m);
+      list.append(b);
+    }
   }
   icons(list);
 }
@@ -178,22 +210,114 @@ async function saveSettings() {
   await call('saveSettings', { id: m.id, values: m.values });
 }
 
+function renderHeader(m) {
+  $('macroName').textContent = m.name;
+  $('macroDescription').textContent = m.error ? `Problem: ${m.error}` : m.description || (m.editable ? 'No description yet.' : '');
+  $('crumbMacro').textContent = m.name;
+  $('runButton').disabled = Boolean(m.error);
+  $('copyButton').classList.toggle('hidden', m.editable);
+  $('editCode').classList.toggle('hidden', !m.editable);
+}
+
+function renderDetails(m) {
+  const form = $('detailsForm');
+  form.elements.name.value = m.name ?? '';
+  form.elements.description.value = m.description ?? '';
+  form.elements.target.value = m.target ?? 'roblox';
+  const boxes = $('permissionBoxes');
+  boxes.replaceChildren();
+  for (const [id, label] of Object.entries(PERMISSION_LABELS)) {
+    const l = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = id;
+    input.checked = Boolean(m.permissions?.includes(id));
+    input.disabled = !editable();
+    input.onchange = () => saveDetails();
+    l.append(input, document.createTextNode(label));
+    boxes.append(l);
+  }
+  $('macroId').textContent = m.id ?? '';
+  $('deleteMacro').textContent = m.inLibrary ? 'Move to Trash' : 'Remove from list';
+  $('deleteMacro').classList.toggle('hidden', m.example);
+  $('detailsNote').textContent = m.example
+    ? 'Examples come with Wick and can\'t be changed. Make a copy to edit it.'
+    : m.inLibrary ? m.folder : `Opened from ${m.folder}. Removing it from the list leaves the folder alone.`;
+}
+
+async function saveDetails() {
+  const m = state.selected;
+  if (!m?.editable) return;
+  const form = $('detailsForm');
+  const changes = {
+    name: form.elements.name.value.trim() || m.name,
+    description: form.elements.description.value.trim(),
+    target: form.elements.target.value,
+    permissions: [...$('permissionBoxes').querySelectorAll('input:checked')].map((i) => i.value),
+  };
+  try {
+    const updated = await call('updateManifest', { folder: m.folder, changes });
+    Object.assign(m, updated, { values: m.values });
+    renderHeader(m);
+    renderMacroList();
+  } catch (e) {
+    toast('Couldn\'t save', e.message, 'error');
+  }
+}
+
+function renderEditing() {
+  const can = editable();
+  for (const el of $('detailsForm').elements) el.disabled = !can;
+  $('deleteMacro').disabled = Boolean(state.running);
+  $('addRegion').classList.toggle('hidden', !can);
+  $('toolAdd').classList.toggle('hidden', !can);
+  live.setRegions(state.selected?.regions ?? {}, can);
+  if (!can && live.mode === 'add') setTool('select');
+  $('regionsHint').textContent = !state.selected
+    ? ''
+    : state.running
+      ? 'Stop the macro to change regions.'
+      : state.selected.editable
+        ? 'Drag a region on the live view to move it, or its corners to resize it. Positions are kept relative to the anchor, so they hold on other screen sizes.'
+        : 'Examples can\'t be changed. Make a copy to edit its regions.';
+  renderRegions();
+}
+
 async function select(m) {
   if (state.running && state.running.folder !== m.folder) {
-    toast('A macro is running', 'Stop it before switching to another macro.', 'warning');
+    toast('A macro is running', 'Stop it before switching to another macro.');
     return;
   }
   state.selected = m;
-  $('macroName').textContent = m.name;
-  $('macroDescription').textContent = m.error ? `Problem: ${m.error}` : m.description;
-  $('crumbMacro').textContent = m.name;
-  $('runButton').disabled = Boolean(m.error);
+  renderHeader(m);
   $('simResults').classList.add('hidden');
   renderSettings(m);
+  renderDetails(m);
+  live.select(null);
+  renderEditing();
   renderMacroList();
+  updateSnippet();
   $('emptyView').classList.add('hidden');
   $('macroView').classList.remove('hidden');
+  call('watchMacro', { folder: m.folder }).catch(() => {});
   if (!state.target) await chooseTarget(TARGET_ORDER.includes(m.target) ? m.target : 'sim');
+}
+
+/** Picks up changes made outside the app, by an editor or an agent. */
+async function reloadSelected() {
+  const m = state.selected;
+  if (!m || live.drag) return;
+  try {
+    const fresh = await call('describe', { folder: m.folder });
+    Object.assign(m, fresh);
+    renderHeader(m);
+    renderSettings(m);
+    if (!document.activeElement?.closest('#detailsForm')) renderDetails(m);
+    renderEditing();
+    renderMacroList();
+  } catch {
+    await loadMacros();
+  }
 }
 
 async function chooseTarget(id) {
@@ -207,11 +331,37 @@ async function chooseTarget(id) {
   }
 }
 
-// MARK: Live view
+// MARK: Live view and regions
 
-const canvas = $('liveCanvas');
-const g = canvas.getContext('2d');
-const scratch = document.createElement('canvas');
+const live = new LiveView($('liveCanvas'), {
+  onSelect(name) {
+    state.selectedRegion = name;
+    renderRegions();
+    updateSnippet();
+  },
+  onRegionsChange(regions, added) {
+    saveRegions(regions);
+    if (added) setTimeout(() => document.querySelector(`.region-row[data-name="${added}"] input`)?.select(), 50);
+  },
+  onPick(hex) {
+    setColor(hex);
+    setTool('select');
+  },
+  onHover(hex) {
+    $('hoverText').textContent = hex ?? '';
+  },
+  onMode(mode) {
+    for (const [id, m] of [['toolSelect', 'select'], ['toolAdd', 'add'], ['toolPick', 'pick']]) $(id).setAttribute('aria-pressed', String(mode === m));
+    if (mode !== 'pick') $('hoverText').textContent = '';
+  },
+  onMatches(m) {
+    const pill = $('matchText');
+    pill.classList.toggle('hidden', !m);
+    if (m) pill.textContent = `${m.pixels} px · ${pct(m.coverage)} of ${m.area}`;
+  },
+});
+
+const setTool = (mode) => live.setMode(mode);
 
 function decode(base64) {
   if (Uint8Array.fromBase64) return Uint8Array.fromBase64(base64);
@@ -222,8 +372,7 @@ function decode(base64) {
 }
 
 function clearLive() {
-  g.fillStyle = '#111';
-  g.fillRect(0, 0, canvas.width, canvas.height);
+  live.clear();
   $('liveEmpty').classList.remove('hidden');
   const t = state.target;
   $('liveEmptyTitle').textContent = t ? `Looking for ${TARGET_LABELS[t]}…` : 'Pick a target';
@@ -234,66 +383,122 @@ function clearLive() {
 function drawPreview(p) {
   if (p.target !== state.target) return;
   $('liveEmpty').classList.add('hidden');
-  scratch.width = p.width;
-  scratch.height = p.height;
-  const image = new ImageData(new Uint8ClampedArray(decode(p.rgba).buffer), p.width, p.height);
-  scratch.getContext('2d').putImageData(image, 0, 0);
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const w = Math.max(1, Math.round(rect.width * dpr));
-  const h = Math.max(1, Math.round(rect.height * dpr));
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w;
-    canvas.height = h;
-  }
-  // Letterbox the frame inside the 16:9 view.
-  const scale = Math.min(w / p.width, h / p.height);
-  const fw = p.width * scale;
-  const fh = p.height * scale;
-  const ox = (w - fw) / 2;
-  const oy = (h - fh) / 2;
-  g.fillStyle = '#111';
-  g.fillRect(0, 0, w, h);
-  g.imageSmoothingEnabled = true;
-  g.drawImage(scratch, ox, oy, fw, fh);
-  const X = (fx) => ox + fx * fw;
-  const Y = (fy) => oy + fy * fh;
-  const overlay = p.overlay;
-  if (overlay && $('showRegions').checked) {
-    g.save();
-    g.setLineDash([6 * dpr, 4 * dpr]);
-    g.lineWidth = 1.5 * dpr;
-    g.strokeStyle = 'rgba(255,255,255,.8)';
-    g.font = `${11 * dpr}px ui-monospace, monospace`;
-    for (const r of overlay.regions) {
-      g.strokeRect(X(r.rect.x), Y(r.rect.y), r.rect.w * fw, r.rect.h * fh);
-      const tw = g.measureText(r.name).width + 8 * dpr;
-      g.fillStyle = 'rgba(0,0,0,.7)';
-      g.fillRect(X(r.rect.x), Y(r.rect.y) - 16 * dpr, tw, 15 * dpr);
-      g.fillStyle = '#fff';
-      g.fillText(r.name, X(r.rect.x) + 4 * dpr, Y(r.rect.y) - 5 * dpr);
-    }
-    g.restore();
-  }
-  if (overlay && $('showTrackers').checked) {
-    g.save();
-    g.lineWidth = 1.5 * dpr;
-    for (const t of overlay.trackers) {
-      if (!t.seen) continue;
-      g.strokeStyle = '#f08a4b';
-      g.strokeRect(X(t.left), Y(t.top), (t.right - t.left) * fw, (t.bottom - t.top) * fh);
-      const cx = X(t.x);
-      const cy = Y(t.y);
-      g.beginPath();
-      g.moveTo(cx - 6 * dpr, cy);
-      g.lineTo(cx + 6 * dpr, cy);
-      g.moveTo(cx, cy - 6 * dpr);
-      g.lineTo(cx, cy + 6 * dpr);
-      g.stroke();
-    }
-    g.restore();
-  }
+  live.setPreview(p, decode(p.rgba));
 }
+
+let saveTimer = null;
+function saveRegions(regions) {
+  const m = state.selected;
+  if (!m?.editable) return;
+  m.regions = structuredClone(regions);
+  renderRegions();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      m.regions = await call('saveRegions', { folder: m.folder, regions: m.regions });
+      live.setRegions(m.regions, editable());
+      renderRegions();
+    } catch (e) {
+      toast('Couldn\'t save regions', e.message, 'error');
+    }
+  }, 150);
+}
+
+const fmtRegion = (r) => `x ${r.x} · y ${r.y} · w ${r.w} · h ${r.h}`;
+
+function renderRegions() {
+  const list = $('regionList');
+  const regions = state.selected?.regions ?? {};
+  const can = editable();
+  if (list.contains(document.activeElement) && list.children.length === Object.keys(regions).length) {
+    // Don't rebuild under the user's cursor; just refresh the numbers.
+    for (const row of list.children) {
+      const r = regions[row.dataset.name];
+      if (r) row.querySelector('small').textContent = fmtRegion(r);
+      row.classList.toggle('selected', row.dataset.name === state.selectedRegion);
+    }
+    return;
+  }
+  list.replaceChildren();
+  for (const [name, r] of Object.entries(regions)) {
+    const row = document.createElement('div');
+    row.className = 'region-row';
+    row.dataset.name = name;
+    row.classList.toggle('selected', name === state.selectedRegion);
+    const input = document.createElement('input');
+    input.value = name;
+    input.disabled = !can;
+    input.setAttribute('aria-label', 'Region name');
+    input.onchange = () => renameRegion(name, input.value.trim());
+    const anchor = document.createElement('select');
+    anchor.disabled = !can;
+    anchor.setAttribute('aria-label', 'Anchor');
+    anchor.title = 'The point on the game window this region is positioned from';
+    for (const a of ANCHORS) anchor.add(new Option(a, a, false, a === (r.anchor ?? 'center')));
+    anchor.onchange = () => reanchor(name, anchor.value);
+    const remove = document.createElement('button');
+    remove.className = 'remove';
+    remove.title = `Delete ${name}`;
+    remove.innerHTML = '<span data-icon="close"></span>';
+    remove.classList.toggle('hidden', !can);
+    remove.onclick = (e) => {
+      e.stopPropagation();
+      const next = { ...regions };
+      delete next[name];
+      live.select(null);
+      live.setRegions(next, can);
+      saveRegions(next);
+    };
+    const info = document.createElement('small');
+    info.textContent = fmtRegion(r);
+    row.append(input, anchor, remove, info);
+    row.onclick = () => live.select(name);
+    list.append(row);
+  }
+  icons(list);
+}
+
+function renameRegion(from, to) {
+  const regions = state.selected?.regions ?? {};
+  if (!to || to === from) return renderRegions();
+  if (regions[to]) {
+    toast('That name is taken', `There's already a region called "${to}".`);
+    return renderRegions();
+  }
+  const next = {};
+  for (const [k, v] of Object.entries(regions)) next[k === from ? to : k] = v;
+  live.setRegions(next, editable());
+  live.select(to);
+  saveRegions(next);
+  updateSnippet();
+}
+
+/** Changes a region's anchor without moving it on screen. */
+function reanchor(name, anchor) {
+  const regions = state.selected?.regions ?? {};
+  const moved = live.preview ? rectRegion(live.rectOf(name), anchor, live.viewport, live.aspect) : { ...regions[name], anchor };
+  const next = { ...regions, [name]: moved };
+  live.setRegions(next, editable());
+  saveRegions(next);
+}
+
+// MARK: Color
+
+function setColor(hex, { typed = false } = {}) {
+  const rgb = parseHex(hex);
+  if (!typed) $('colorHex').value = rgb ? hex.toLowerCase() : hex;
+  $('colorSwatch').style.background = rgb ? hex : '';
+  live.setColor(rgb ? { hex, tolerance: Number($('tolerance').value) } : null);
+  updateSnippet();
+}
+
+function updateSnippet() {
+  const hex = parseHex($('colorHex').value) ? $('colorHex').value.toLowerCase() : '#ffffff';
+  const region = state.selectedRegion ?? Object.keys(state.selected?.regions ?? {})[0] ?? 'area';
+  $('snippet').textContent = `screen.track("${region}", { color: "${hex}", tolerance: ${$('tolerance').value} })`;
+}
+
+// MARK: Stats
 
 function showSessionStats(s) {
   state.sessionStats = s;
@@ -420,23 +625,82 @@ async function refreshStatus() {
 
 async function loadMacros() {
   state.macros = await call('macros');
+  const keep = state.selected && state.macros.find((m) => m.folder === state.selected.folder);
+  state.selected = null;
   renderMacroList();
   if (!state.macros.length) {
     $('emptyView').classList.remove('hidden');
     $('macroView').classList.add('hidden');
-  } else if (!state.selected) {
-    await select(state.macros[0]);
+  } else {
+    await select(keep ?? state.macros[0]);
   }
+}
+
+async function showMacro(folder) {
+  if (state.running) return;
+  state.macros = await call('macros');
+  state.selected = null;
+  await select(state.macros.find((x) => x.folder === folder) ?? state.macros[0]);
 }
 
 async function openMacro() {
   try {
     const m = await call('openMacro');
-    if (!m) return;
-    await loadMacros();
-    await select(state.macros.find((x) => x.folder === m.folder) ?? m);
+    if (m) await showMacro(m.folder);
   } catch (e) {
     toast('Couldn\'t open that folder', e.message, 'error');
+  }
+}
+
+async function newMacro() {
+  if (state.running) {
+    toast('A macro is running', 'Stop it before creating another one.');
+    return;
+  }
+  const dialog = $('newDialog');
+  const form = $('newForm');
+  form.reset();
+  form.elements.target.value = 'roblox';
+  const info = await call('libraryInfo').catch(() => null);
+  $('newWhere').textContent = info ? `Saved in ${info.folder}` : '';
+  dialog.showModal();
+  form.elements.name.focus();
+}
+
+$('newDialog').onclose = async () => {
+  if ($('newDialog').returnValue !== 'create') return;
+  const form = $('newForm');
+  try {
+    const m = await call('newMacro', { name: form.elements.name.value, target: form.elements.target.value });
+    await showMacro(m.folder);
+    log(`Created ${m.name} in your library.`);
+  } catch (e) {
+    toast('Couldn\'t create the macro', e.message, 'error');
+  }
+};
+
+async function copySelected() {
+  const m = state.selected;
+  if (!m || state.running) return;
+  try {
+    const copy = await call('copyMacro', { folder: m.folder });
+    await showMacro(copy.folder);
+    toast('Copied to your library', `${copy.name} is yours to edit.`);
+  } catch (e) {
+    toast('Couldn\'t copy the macro', e.message, 'error');
+  }
+}
+
+async function deleteSelected() {
+  const m = state.selected;
+  if (!m || state.running) return;
+  try {
+    if (!(await call('deleteMacro', { folder: m.folder }))) return;
+    state.selected = null;
+    await call('watchMacro', {});
+    await loadMacros();
+  } catch (e) {
+    toast('Couldn\'t remove the macro', e.message, 'error');
   }
 }
 
@@ -460,11 +724,14 @@ wick.onEvent((method, params) => {
       showMacroStats(params);
       ended(params);
       break;
+    case 'macro.changed':
+      if (params.folder === state.selected?.folder) reloadSelected();
+      break;
     case 'killswitch': {
       const chip = $('killChip');
       chip.classList.add('fired');
       setTimeout(() => chip.classList.remove('fired'), 1200);
-      if (state.running) toast('Kill switch', 'Every macro was stopped.', 'warning');
+      if (state.running) toast('Kill switch', 'Every macro was stopped.');
       break;
     }
     case 'engine.ready':
@@ -478,23 +745,61 @@ wick.onEvent((method, params) => {
     case 'app.openMacro':
       openMacro();
       break;
+    case 'app.newMacro':
+      newMacro();
+      break;
   }
 });
 
-$('openShortcut').textContent = wick.platform === 'darwin' ? '⌘ O' : 'Ctrl O';
+const mod = wick.platform === 'darwin' ? '⌘' : 'Ctrl';
+$('openShortcut').textContent = `${mod} O`;
+$('newShortcut').textContent = `${mod} N`;
+$('newMacro').onclick = newMacro;
+$('emptyNew').onclick = newMacro;
 $('openMacro').onclick = openMacro;
 $('runButton').onclick = run;
 $('stopButton').onclick = () => call('stop').catch((e) => toast('Couldn\'t stop', e.message, 'error'));
 $('killChip').onclick = () => call('killswitch');
 $('simulateButton').onclick = simulate;
+$('copyButton').onclick = copySelected;
+$('editCode').onclick = () => state.selected && call('editCode', { folder: state.selected.folder });
 $('openBench').onclick = () => call('openTestBench');
 $('showFolder').onclick = () => state.selected && call('showFolder', { folder: state.selected.folder });
 $('clearLog').onclick = () => $('runLog').replaceChildren();
 $('openPermissionSettings').onclick = () => call('openPrivacySettings', { pane: state.settingsPane });
 $('restartApp').onclick = () => call('restart');
+$('deleteMacro').onclick = deleteSelected;
+$('detailsForm').onchange = (e) => {
+  if (!e.target.closest('#permissionBoxes')) saveDetails();
+};
+$('detailsForm').onsubmit = (e) => e.preventDefault();
+
+$('toolSelect').onclick = () => setTool('select');
+$('toolAdd').onclick = () => setTool('add');
+$('toolPick').onclick = () => setTool('pick');
+$('pickButton').onclick = () => setTool('pick');
+$('addRegion').onclick = () => setTool('add');
+$('showRegions').onchange = (e) => live.setLayer('regions', e.target.checked);
+$('showMatches').onchange = (e) => live.setLayer('matches', e.target.checked);
+$('showTrackers').onchange = (e) => live.setLayer('trackers', e.target.checked);
+$('colorHex').oninput = () => {
+  const v = $('colorHex').value.trim();
+  setColor(v.startsWith('#') ? v : `#${v}`, { typed: true });
+};
+$('tolerance').oninput = () => {
+  $('toleranceText').textContent = $('tolerance').value;
+  const hex = $('colorHex').value;
+  if (parseHex(hex)) live.setColor({ hex, tolerance: Number($('tolerance').value) });
+  updateSnippet();
+};
+$('copySnippet').onclick = () => navigator.clipboard.writeText($('snippet').textContent).then(() => toast('Copied', $('snippet').textContent));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && live.mode !== 'select') setTool('select');
+});
 
 icons();
 clearLive();
+updateSnippet();
 setInterval(() => {
   if (!state.running) call('status').then((s) => {
     for (const t of s.targets) state.targets[t.id] = t;

@@ -14,7 +14,7 @@ const userData = mkdtempSync(join(tmpdir(), 'wick-smoke-'));
 
 const child = spawn(electron, [root], {
   cwd: root,
-  env: { ...process.env, WICK_SMOKE: '1', WICK_USER_DATA: userData },
+  env: { ...process.env, WICK_SMOKE: '1', WICK_USER_DATA: userData, WICK_LIBRARY: join(userData, 'library') },
   stdio: ['ignore', 'pipe', 'inherit'],
 });
 let output = '';
