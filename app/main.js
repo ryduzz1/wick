@@ -504,7 +504,7 @@ async function smokeReport() {
   // Sharing: export an example, open it on the install screen, install it,
   // and calibrate a color on the installed copy.
   const pack = path.join(app.getPath('temp'), `wick-smoke-${process.pid}.wick`);
-  sharing.exportMacro(path.join(root, 'examples', 'fishing-trip'), pack);
+  sharing.exportMacro(exampleFolders().find((f) => path.basename(f) === 'fishing-trip'), pack);
   forward('app.install', { source: pack });
   await sleep(800);
   shown.install = await js(`({
@@ -598,7 +598,7 @@ app.on('open-file', (event, file) => {
 });
 // Only the packaged app claims wick:// links, so development runs don't
 // change which program the system opens them with.
-if (app.isPackaged) app.setAsDefaultProtocolClient('wick');
+if (app.isPackaged && !smoke) app.setAsDefaultProtocolClient('wick');
 const launchRequest = installArg(process.argv.slice(app.isPackaged ? 1 : 2));
 if (launchRequest) openRequests.push(launchRequest);
 

@@ -1,0 +1,14 @@
+#!/bin/sh
+# The `wick` command for the packaged app: runs bin/wick.js with Wick's own
+# Electron acting as Node. Link it onto your PATH, for example:
+#   ln -s "/Applications/Wick.app/Contents/Resources/bin/wick" /usr/local/bin/wick
+self="$0"
+while [ -L "$self" ]; do
+  link="$(readlink "$self")"
+  case "$link" in
+    /*) self="$link" ;;
+    *) self="$(dirname "$self")/$link" ;;
+  esac
+done
+resources="$(cd "$(dirname "$self")/.." && pwd)"
+ELECTRON_RUN_AS_NODE=1 exec "$resources/../MacOS/Wick" "$resources/app.asar/bin/wick.js" "$@"

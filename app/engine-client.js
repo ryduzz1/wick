@@ -10,7 +10,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const exe = process.platform === 'win32' ? 'wick-engine.exe' : 'wick-engine';
 
 /** The engine binary: bundled with a packaged app, or from a local build. */
-export function enginePath({ resourcesPath } = {}) {
+export function enginePath({ resourcesPath = process.resourcesPath } = {}) {
   const candidates = [
     process.env.WICK_ENGINE,
     resourcesPath && join(resourcesPath, exe),
