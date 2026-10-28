@@ -90,6 +90,18 @@ Built as one large pass:
 
 **Verification:** storyboard tests split a synthetic demonstration (walk with a camera turn, press E, wait for a scene change, ten clicks, walk) into exactly the expected five steps and labels, and an idle recording into one wait; a PNG round-trip test. World tests cover walking along a turned heading, filling the bag, a full bag not casting, the sell menu blocking movement and selling, reset to spawn, and the prompt. Session tests: a route stops where `until` fires, within reach of the dock; holds and a quarter turn replay to the expected position and heading; a timed-out state stops walking at the timeout; a scripted demonstration records into exactly the expected seven storyboard steps. A Node test runs the whole path through the command layer: record the fishing trip's demo, cut two routes from the storyboard, and run the macro on them with human input until it sells a bag without a timeout. (Run by hand, the example made two full trips in 70 s.) Template tests find an icon at its exact spot, at twice the size in a bigger window, with the brightness changed, and score it low when it's absent or outside the region; a session test cuts the sim's sell button out of a frame, and a macro finds it in the open menu and clicks it to sell. A Node test saves a template from the sim world, matches it with `detect` and loads it with the macro. An OCR test reads "Bag 3/5" and "Coins: 120" from a PNG fixture with Vision (and on Windows CI when a recognition language is installed). The Windows motion hook and OCR type-check with `cargo clippy --target x86_64-pc-windows-msvc`. The example-macro Node test now pins its human-profile seeds, which made it flaky before.
 
+### Pass 7: Sharing
+
+- **Packages:** `.wick` files are deterministic zips with a content hash in the comment; `wick pack`, `wick_pack` and the macro's Export button make them. Installs refuse unsafe paths, more than 400 files or 20 MB, bad CRCs, broken manifests, and packages whose contents no longer match their hash.
+- **Sources:** a `.wick` file, a `wick://install?url=` link, an `https` link to a `.wick`, a GitHub repo (branch and subfolder too, with a picker when it holds several macros) or a Gist.
+- **Install screen:** name, version, author, target, an intact/changed badge, update and new-permission notices, problems in soft red, permissions in plain words, the README and every file's source as text. Nothing is written until Install.
+- **In the app:** Install macro in the sidebar and File menu (⇧⌘I), drag and drop of `.wick` files and links, double-clicked `.wick` files and `wick://` links forwarded to the running Wick (single instance; held until the window is ready). Only the packaged app registers `wick://`, so development runs don't change system settings.
+- **Updates:** Check for updates on macros installed from a link; updates install in place, keep `.wick/`, settings and calibration, and flag added permissions.
+- **Calibration:** installed macros keep region moves as per-user calibration (they can't add, rename or delete the author's regions), and a Calibration card lists the colors in the macro's code with a picker to map each to what the user's game shows. Runs and simulator tests use the calibrated regions and colors. `wick calibration` and `wick_calibration` for agents.
+- Not done: an automatic first-run calibration walkthrough (the regions show on the live view, but Wick doesn't yet step through each detector on first run), and the public library index (moved to Later).
+
+**Verification:** 7 package tests (deterministic packing, tamper detection, unsafe paths and broken manifests, install then in-place update keeping local data and noting a new permission, link parsing, repos with several macros, package and Gist downloads with a fake fetch); Node tests through the command layer for pack/install/update and color calibration; the app smoke test exports the fishing trip, opens it on the install screen through the same path a double-clicked file takes, checks the badges, permissions and files, installs it, checks the library and Calibration card, and calibrates a color with the picker. Screenshots of the install screen and Calibration card checked by eye.
+
 ## Still to test by hand
 
 Kept for the end-to-end test once the app is finished:
@@ -105,20 +117,13 @@ Kept for the end-to-end test once the app is finished:
 - The trace graph and the Runs card during and after a live run on the test bench.
 - `character.reset()` in a Roblox game that allows macros: the menu opens, R and Enter land, and the macro carries on once you respawn.
 - `game.rejoin()` after a real disconnect: whether the `roblox://` link rejoins in the open client on macOS and Windows.
+- Sharing: export a macro, send it to another account or machine, and install it by double-clicking the `.wick`, by dropping it on Wick, and from a GitHub repo link; then update it from a newer push and check settings and calibration survive. (`wick://` links and double-click need the packaged build from Pass 8.)
+- Calibration on a real window: drag an installed macro's region to fit, pick a shifted color in the Calibration card, run it, and Reset.
 - Everything on Windows.
 
 ## Build plan
 
 Left over from earlier passes, to fold into the passes below: a `dist:dir` packaged build, measured (rather than fixed) input latency on real windows, and a per-frame detector benchmark.
-
-### Pass 7: Sharing
-
-- `wick pack` and Export: `.wick` files with a content hash.
-- Install from a file, a `wick://install` link, or a GitHub repo or Gist URL.
-- Install screen with README, target, game, permissions and source; updates that keep settings and ask again for new permissions.
-- Calibration: overlay on first run, drag to fix regions, click to fix colors, saved per user.
-
-**Checks:** tests for pack and install round trips, tampered-package rejection, and settings kept across updates. Manual: export a macro, install it on another account or machine, and calibrate it.
 
 ### Pass 8: Polish and release (planned passes 11 and 12)
 
@@ -130,6 +135,7 @@ Left over from earlier passes, to fold into the passes below: a `dist:dir` packa
 #### Release
 
 - Signed and notarized macOS build, Windows installer, auto-update, engine bundled with the app.
+- Declare the `wick` URL scheme and the `.wick` document type in the packaged app (Info.plist `CFBundleURLTypes` / `CFBundleDocumentTypes`, Windows file association), so double-clicked packages and links reach the handlers that already exist.
 - Release script and `docs/RELEASING.md`, as in Fuse.
 
 **Checks:** a release build installs and runs on clean macOS and Windows machines.

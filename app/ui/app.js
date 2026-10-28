@@ -23,6 +23,9 @@ const ICONS = {
   drop: '<path d="M8 2.2S4 6.6 4 9.6a4 4 0 0 0 8 0c0-3-4-7.4-4-7.4z"/>',
   close: '<path d="m4 4 8 8M12 4l-8 8"/>',
   sliders: '<path d="M3 4.5h10M3 11.5h10"/><circle cx="6" cy="4.5" r="1.6"/><circle cx="10.5" cy="11.5" r="1.6"/>',
+  download: '<path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7"/><path d="M2.5 11v1.5A1.5 1.5 0 0 0 4 14h8a1.5 1.5 0 0 0 1.5-1.5V11"/>',
+  share: '<path d="M8 10V2.5M4.8 5.5 8 2.3l3.2 3.2"/><path d="M5.5 7.5H4A1.5 1.5 0 0 0 2.5 9v3.5A1.5 1.5 0 0 0 4 14h8a1.5 1.5 0 0 0 1.5-1.5V9A1.5 1.5 0 0 0 12 7.5h-1.5"/>',
+  refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.6"/><path d="M13 2.5v3h-3"/>',
 };
 
 const TARGET_LABELS = { sim: 'Simulator', testbench: 'Test bench', roblox: 'Roblox' };
@@ -46,6 +49,10 @@ const state = {
   sessionStats: null,
   permissions: null,
   selectedRegion: null,
+  // The macro color being calibrated with the picker, if any.
+  pickFor: null,
+  // The install screen's pending install.
+  install: null,
 };
 
 function icons(root = document) {
@@ -93,6 +100,9 @@ const fmtSeconds = (ms) => {
 };
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
 const editable = () => Boolean(state.selected?.editable) && !state.running;
+// Installed macros can be moved and resized to fit (as calibration), but
+// their regions aren't added, renamed or removed: that's the author's code.
+const reshapeable = () => editable() && !state.selected.installed;
 
 // MARK: Run state
 
@@ -140,7 +150,7 @@ function renderMacroList() {
       if (state.running?.folder === m.folder) b.classList.add('running');
       b.innerHTML = '<span data-icon="macro"></span><span></span><small></small>';
       b.children[1].textContent = m.name;
-      b.children[2].textContent = m.error ? 'problem' : '';
+      b.children[2].textContent = m.error ? 'problem' : m.installed && m.version ? `v${m.version}` : '';
       b.title = m.error ?? m.folder;
       b.onclick = () => select(m);
       list.append(b);
@@ -219,6 +229,7 @@ function renderHeader(m) {
   $('runButton').disabled = Boolean(m.error);
   $('copyButton').classList.toggle('hidden', m.editable);
   $('editCode').classList.toggle('hidden', !m.editable);
+  $('updateButton').classList.toggle('hidden', !m.source?.url);
 }
 
 function renderDetails(m) {
@@ -244,7 +255,8 @@ function renderDetails(m) {
   $('deleteMacro').classList.toggle('hidden', m.example);
   $('detailsNote').textContent = m.example
     ? 'Examples come with Wick and can\'t be changed. Make a copy to edit it.'
-    : m.inLibrary ? m.folder : `Opened from ${m.folder}. Removing it from the list leaves the folder alone.`;
+    : m.installed ? `Installed${m.source?.url ? ` from ${m.source.url}` : ''}${m.author ? `, by ${m.author}` : ''}. ${m.folder}`
+      : m.inLibrary ? m.folder : `Opened from ${m.folder}. Removing it from the list leaves the folder alone.`;
 }
 
 async function saveDetails() {
@@ -271,18 +283,21 @@ function renderEditing() {
   const can = editable();
   for (const el of $('detailsForm').elements) el.disabled = !can;
   $('deleteMacro').disabled = Boolean(state.running);
-  $('addRegion').classList.toggle('hidden', !can);
-  $('toolAdd').classList.toggle('hidden', !can);
+  $('addRegion').classList.toggle('hidden', !reshapeable());
+  $('toolAdd').classList.toggle('hidden', !reshapeable());
   live.setRegions(state.selected?.regions ?? {}, can);
   if (!can && live.mode === 'add') setTool('select');
   $('regionsHint').textContent = !state.selected
     ? ''
     : state.running
       ? 'Stop the macro to change regions.'
+      : state.selected.installed
+        ? 'Drag a region on the live view to fit your screen. Your changes are kept as calibration: updates don\'t overwrite them and exports leave them out.'
       : state.selected.editable
         ? 'Drag a region on the live view to move it, or its corners to resize it. Positions are kept relative to the anchor, so they hold on other screen sizes.'
         : 'Examples can\'t be changed. Make a copy to edit its regions.';
   renderRegions();
+  renderCalibration();
 }
 
 async function select(m) {
@@ -353,13 +368,18 @@ const live = new LiveView($('liveCanvas'), {
     if (added) setTimeout(() => document.querySelector(`.region-row[data-name="${added}"] input`)?.select(), 50);
   },
   onPick(hex) {
-    setColor(hex);
+    if (state.pickFor) calibrateColor(state.pickFor, hex);
+    else setColor(hex);
     setTool('select');
   },
   onHover(hex) {
     $('hoverText').textContent = hex ?? '';
   },
   onMode(mode) {
+    if (mode !== 'pick' && state.pickFor) {
+      state.pickFor = null;
+      renderCalibration();
+    }
     for (const [id, m] of [['toolSelect', 'select'], ['toolAdd', 'add'], ['toolPick', 'pick']]) $(id).setAttribute('aria-pressed', String(mode === m));
     if (mode !== 'pick') $('hoverText').textContent = '';
   },
@@ -419,6 +439,7 @@ function renderRegions() {
   const list = $('regionList');
   const regions = state.selected?.regions ?? {};
   const can = editable();
+  const reshape = reshapeable();
   if (list.contains(document.activeElement) && list.children.length === Object.keys(regions).length) {
     // Don't rebuild under the user's cursor; just refresh the numbers.
     for (const row of list.children) {
@@ -436,7 +457,7 @@ function renderRegions() {
     row.classList.toggle('selected', name === state.selectedRegion);
     const input = document.createElement('input');
     input.value = name;
-    input.disabled = !can;
+    input.disabled = !reshape;
     input.setAttribute('aria-label', 'Region name');
     input.onchange = () => renameRegion(name, input.value.trim());
     const anchor = document.createElement('select');
@@ -449,7 +470,7 @@ function renderRegions() {
     remove.className = 'remove';
     remove.title = `Delete ${name}`;
     remove.innerHTML = '<span data-icon="close"></span>';
-    remove.classList.toggle('hidden', !can);
+    remove.classList.toggle('hidden', !reshape);
     remove.onclick = (e) => {
       e.stopPropagation();
       const next = { ...regions };
@@ -867,6 +888,293 @@ async function deleteSelected() {
   }
 }
 
+// MARK: Sharing
+
+function openInstallSource() {
+  if (state.running) {
+    toast('A macro is running', 'Stop it before installing another one.');
+    return;
+  }
+  $('installSourceForm').reset();
+  $('installSourceDialog').showModal();
+  $('installSourceForm').elements.url.focus();
+}
+
+$('installSourceDialog').onclose = () => {
+  const url = $('installSourceForm').elements.url.value.trim();
+  if ($('installSourceDialog').returnValue === 'continue' && url) installFrom(url);
+};
+
+$('chooseInstallFile').onclick = async () => {
+  $('installSourceDialog').close('cancel');
+  try {
+    const info = await call('chooseInstallFile');
+    if (info) showInstall(info);
+  } catch (e) {
+    toast('Couldn\'t open that package', e.message, 'error');
+  }
+};
+
+/** Reads a .wick file or link and shows what it contains. Nothing is installed yet. */
+async function installFrom(source, macro) {
+  if (state.running) {
+    toast('A macro is running', 'Stop it before installing another one.');
+    return;
+  }
+  try {
+    showInstall(await call('prepareInstall', { source, macro }));
+  } catch (e) {
+    toast('Couldn\'t open that macro', e.message, 'error');
+  }
+}
+
+const kb = (bytes) => (bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`);
+
+function showInstall(info) {
+  const dialog = $('installDialog');
+  state.install = info;
+  const choosing = Boolean(info.choose);
+  $('installChoose').classList.toggle('hidden', !choosing);
+  $('installReview').classList.toggle('hidden', choosing);
+  $('installConfirm').classList.toggle('hidden', choosing);
+  if (choosing) {
+    $('installChooseText').textContent = `${info.source} has ${info.choose.length} macros. Which one?`;
+    const list = $('installChoices');
+    list.replaceChildren();
+    for (const c of info.choose) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = '<span data-icon="macro"></span><span></span><small></small>';
+      b.children[1].textContent = c.name;
+      b.children[2].textContent = c.folder;
+      b.onclick = () => {
+        dialog.close('cancel');
+        installFrom(info.source, c.folder);
+      };
+      list.append(b);
+    }
+    icons(list);
+    if (!dialog.open) dialog.showModal();
+    return;
+  }
+  const m = info.manifest ?? {};
+  $('installName').textContent = m.name ?? 'Unnamed macro';
+  $('installMeta').textContent = [m.version && `v${m.version}`, m.author && `by ${m.author}`, m.target && TARGET_LABELS[m.target], info.source].filter(Boolean).join(' · ');
+  $('installDescription').textContent = m.description ?? '';
+  $('installDescription').classList.toggle('hidden', !m.description);
+
+  const badges = $('installBadges');
+  badges.replaceChildren();
+  const badge = (text, kind = '') => {
+    const b = document.createElement('span');
+    b.className = `badge ${kind}`;
+    b.textContent = text;
+    badges.append(b);
+  };
+  if (info.intact === true) badge('Unchanged since it was exported');
+  if (info.intact === false) badge('Changed after it was exported', 'error');
+  if (info.existing) badge(info.sameAsInstalled ? 'Already installed, same files' : `Updates v${info.existing.version ?? '?'} to v${m.version ?? '?'}`, info.sameAsInstalled ? '' : 'ember');
+  if (info.addedPermissions.length) badge(`Asks for ${info.addedPermissions.length} new permission${info.addedPermissions.length > 1 ? 's' : ''}`, 'ember');
+  badge(`${info.files.length} files · ${info.hash.slice(0, 12)}`);
+
+  const problems = $('installProblems');
+  problems.replaceChildren(...info.problems.map((p) => Object.assign(document.createElement('li'), { textContent: p })));
+  problems.classList.toggle('hidden', !info.problems.length);
+
+  const perms = $('installPermissions');
+  perms.replaceChildren();
+  for (const p of info.permissions) {
+    const li = document.createElement('li');
+    li.classList.toggle('added', info.addedPermissions.includes(p.name));
+    li.append(document.createTextNode(p.text));
+    if (info.addedPermissions.includes(p.name)) li.append(' ', Object.assign(document.createElement('small'), { textContent: 'new in this version' }));
+    perms.append(li);
+  }
+  if (!info.permissions.length) perms.append(Object.assign(document.createElement('li'), { textContent: 'Watch the game window. It asks to send no input.' }));
+
+  $('installReadmeBlock').classList.toggle('hidden', !info.readme);
+  $('installReadme').textContent = info.readme ?? '';
+
+  // Every file, readable before installing. Shown as text, never as markup.
+  const files = $('installFiles');
+  files.replaceChildren();
+  for (const f of info.files) {
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.append(f.name, Object.assign(document.createElement('span'), { textContent: kb(f.bytes) }));
+    details.append(summary);
+    const pre = document.createElement('pre');
+    pre.textContent = f.text ?? 'Not a text file.';
+    details.append(pre);
+    files.append(details);
+  }
+
+  const blocked = info.problems.length > 0 || info.intact === false;
+  const confirm = $('installConfirm');
+  confirm.disabled = blocked || info.sameAsInstalled;
+  confirm.textContent = info.sameAsInstalled ? 'Installed' : info.existing ? 'Update' : 'Install';
+  if (!dialog.open) dialog.showModal();
+  dialog.querySelector('form').scrollTop = 0;
+  dialog.scrollTop = 0;
+}
+
+$('installDialog').onclose = async () => {
+  const info = state.install;
+  state.install = null;
+  if ($('installDialog').returnValue !== 'install' || !info?.token) return;
+  try {
+    const done = await call('confirmInstall', { token: info.token });
+    toast(done.updated ? 'Updated' : 'Installed', done.updated ? `${done.macro.name} is now v${done.version}.` : `${done.macro.name} is in your library.`);
+    log(`${done.updated ? 'Updated' : 'Installed'} ${done.macro.name}${done.version ? ` v${done.version}` : ''}.`);
+    await showMacro(done.folder);
+  } catch (e) {
+    toast('Couldn\'t install', e.message, 'error');
+  }
+};
+
+async function exportSelected() {
+  const m = state.selected;
+  if (!m) return;
+  try {
+    const done = await call('exportMacro', { folder: m.folder });
+    if (done) toast('Exported', `${done.file}\n${done.files} files · ${kb(done.bytes)}. Anyone with Wick can open it to install.`);
+  } catch (e) {
+    toast('Couldn\'t export', e.message, 'error');
+  }
+}
+
+async function checkUpdate() {
+  const m = state.selected;
+  if (!m || state.running) return;
+  const b = $('updateButton');
+  b.disabled = true;
+  try {
+    const found = await call('checkUpdate', { folder: m.folder });
+    if (found.upToDate) toast('Up to date', `${m.name} matches ${m.source.url}.`);
+    else showInstall(found);
+  } catch (e) {
+    toast('Couldn\'t check for updates', e.message, 'error');
+  } finally {
+    b.disabled = false;
+  }
+}
+
+// MARK: Calibration
+
+let calibrationFolder = null;
+let calibrationColors = [];
+
+async function renderCalibration() {
+  const m = state.selected;
+  const card = $('calibrationCard');
+  card.classList.toggle('hidden', !m?.installed);
+  if (!m?.installed) return;
+  if (calibrationFolder !== m.folder) {
+    calibrationFolder = m.folder;
+    calibrationColors = [];
+    try {
+      calibrationColors = (await call('calibrationColors', { folder: m.folder })).colors;
+    } catch {}
+    if (state.selected !== m) return;
+  }
+  const mapped = m.calibration?.colors ?? {};
+  const moved = Object.keys(m.calibration?.regions ?? {});
+  $('calibrationHint').textContent =
+    `If a color here looks different in your game (a different shader, graphics level or theme), pick what you see instead. ` +
+    (moved.length ? `Regions you've fitted: ${moved.join(', ')}.` : 'Regions you move on the live view are kept here too.');
+  $('resetCalibration').disabled = !moved.length && !Object.keys(mapped).length;
+  const list = $('calibrationColors');
+  list.replaceChildren();
+  for (const hex of calibrationColors) {
+    const to = mapped[hex];
+    const row = document.createElement('div');
+    row.className = 'cal-row';
+    row.classList.toggle('picking', state.pickFor === hex);
+    const sw = (color) => Object.assign(document.createElement('span'), { className: 'swatch', style: `background:${color}` });
+    const pick = Object.assign(document.createElement('button'), { type: 'button', className: 'small-button quiet', innerHTML: '<span data-icon="drop"></span>' });
+    pick.append(state.pickFor === hex ? 'Click the game…' : 'Pick');
+    pick.title = 'Click the live view on the color your game shows';
+    pick.disabled = Boolean(state.running);
+    pick.onclick = () => {
+      state.pickFor = hex;
+      setTool('pick');
+      renderCalibration();
+    };
+    const clear = Object.assign(document.createElement('button'), { type: 'button', className: 'small-button quiet remove', innerHTML: '<span data-icon="close"></span>' });
+    clear.title = 'Use the macro\'s own color';
+    clear.style.visibility = to ? '' : 'hidden';
+    clear.onclick = () => calibrateColor(hex, null);
+    row.append(
+      sw(hex),
+      document.createTextNode(hex),
+      Object.assign(document.createElement('span'), { className: 'arrow', textContent: '→' }),
+      to ? sw(to) : document.createElement('span'),
+      Object.assign(document.createElement('span'), { className: to ? '' : 'same', textContent: to ?? 'as written' }),
+      pick,
+      clear,
+    );
+    list.append(row);
+  }
+  icons(list);
+}
+
+async function calibrateColor(from, to) {
+  const m = state.selected;
+  state.pickFor = null;
+  if (!m) return;
+  try {
+    Object.assign(m, await call('setCalibrationColor', { folder: m.folder, from, to }), { values: m.values });
+    if (to) log(`Calibrated ${from} to ${to} for ${m.name}.`);
+  } catch (e) {
+    toast('Couldn\'t save calibration', e.message, 'error');
+  }
+  renderCalibration();
+}
+
+$('resetCalibration').onclick = async () => {
+  const m = state.selected;
+  if (!m) return;
+  try {
+    Object.assign(m, await call('resetCalibration', { folder: m.folder }), { values: m.values });
+    renderEditing();
+    toast('Calibration reset', `${m.name} uses its own regions and colors again.`);
+  } catch (e) {
+    toast('Couldn\'t reset calibration', e.message, 'error');
+  }
+};
+
+// Dropping a .wick file, or a link, anywhere on the window installs it.
+let dragDepth = 0;
+const dragHasInstall = (e) => [...(e.dataTransfer?.types ?? [])].some((t) => t === 'Files' || t === 'text/uri-list');
+document.addEventListener('dragenter', (e) => {
+  if (!dragHasInstall(e)) return;
+  dragDepth++;
+  $('dropZone').classList.remove('hidden');
+});
+document.addEventListener('dragleave', () => {
+  if (--dragDepth <= 0) {
+    dragDepth = 0;
+    $('dropZone').classList.add('hidden');
+  }
+});
+document.addEventListener('dragover', (e) => {
+  if (dragHasInstall(e)) e.preventDefault();
+});
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  $('dropZone').classList.add('hidden');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const where = wick.pathForFile(file);
+    if (where?.toLowerCase().endsWith('.wick')) installFrom(where);
+    else toast('That isn\'t a macro package', 'Drop a .wick file, or open a macro folder with Open macro folder.');
+    return;
+  }
+  const url = e.dataTransfer.getData('text/uri-list').split('\n').find((l) => l && !l.startsWith('#'));
+  if (url) installFrom(url.trim());
+});
+
 // MARK: Wiring
 
 wick.onEvent((method, params) => {
@@ -925,6 +1233,12 @@ wick.onEvent((method, params) => {
     case 'app.settings':
       openSettings();
       break;
+    case 'app.installMacro':
+      openInstallSource();
+      break;
+    case 'app.install':
+      installFrom(params.source);
+      break;
     case 'agent.target':
       if (!state.running && params.target !== state.target) {
         state.target = params.target;
@@ -957,6 +1271,10 @@ $('openShortcut').textContent = `${mod} O`;
 $('newShortcut').textContent = `${mod} N`;
 $('newMacro').onclick = newMacro;
 $('settingsShortcut').textContent = `${mod} ,`;
+$('installShortcut').textContent = wick.platform === 'darwin' ? '⇧ ⌘ I' : 'Ctrl Shift I';
+$('installMacro').onclick = openInstallSource;
+$('exportButton').onclick = exportSelected;
+$('updateButton').onclick = checkUpdate;
 $('openSettings').onclick = openSettings;
 $('emptyNew').onclick = newMacro;
 $('openMacro').onclick = openMacro;
@@ -1011,3 +1329,5 @@ setInterval(() => {
 }, 3000);
 await refreshStatus();
 await loadMacros();
+// A .wick file or wick:// link that opened Wick.
+for (const source of await call('takeInstallRequests').catch(() => [])) installFrom(source);

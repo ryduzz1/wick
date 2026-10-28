@@ -13,6 +13,7 @@
     <div class="brand"><span class="mark glyph">w</span><span>Wick</span><span class="version" id="appVersion"></span></div>
     <button id="newMacro" class="sidebar-action"><span data-icon="plus"></span>New macro<span class="shortcut" id="newShortcut">⌘ N</span></button>
     <button id="openMacro" class="sidebar-action"><span data-icon="folder"></span>Open macro folder<span class="shortcut" id="openShortcut">⌘ O</span></button>
+    <button id="installMacro" class="sidebar-action"><span data-icon="download"></span>Install macro<span class="shortcut" id="installShortcut">⇧ ⌘ I</span></button>
     <div id="macroList" class="macro-list"></div>
     <div class="sidebar-bottom">
       <button id="openSettings" class="sidebar-action"><span data-icon="sliders"></span>Settings<span class="shortcut" id="settingsShortcut">⌘ ,</span></button>
@@ -67,6 +68,8 @@
           <button id="copyButton" class="quiet small-button hidden" title="Copy this example into your library so you can change it"><span data-icon="copy"></span>Make a copy</button>
           <button id="editCode" class="quiet small-button hidden"><span data-icon="code"></span>Edit code</button>
           <button id="showFolder" class="quiet small-button"><span data-icon="folder"></span>Show folder</button>
+          <button id="exportButton" class="quiet small-button" title="Save this macro as a .wick file to share"><span data-icon="share"></span>Export</button>
+          <button id="updateButton" class="quiet small-button hidden" title="Look for a newer version where this macro came from"><span data-icon="refresh"></span>Check for updates</button>
         </div>
 
         <div class="live">
@@ -133,6 +136,12 @@
           </section>
         </div>
 
+        <section id="calibrationCard" class="card hidden">
+          <div class="section-title"><h2>Calibration</h2><button id="resetCalibration" class="quiet small-button">Reset</button></div>
+          <p id="calibrationHint" class="muted small"></p>
+          <div id="calibrationColors" class="calibration-colors"></div>
+        </section>
+
         <div class="columns">
           <section class="card">
             <div class="section-title"><h2>Settings</h2></div>
@@ -184,6 +193,50 @@
       <div class="actions end"><button value="close" class="primary">Done</button></div>
     </form>
   </dialog>
+
+  <dialog id="installSourceDialog">
+    <form method="dialog" id="installSourceForm">
+      <h2>Install a macro</h2>
+      <p class="small">Open a .wick file someone shared, or paste a link to one, a GitHub repo or a Gist. You'll see everything it contains before anything is installed.</p>
+      <div class="actions"><button type="button" id="chooseInstallFile" class="small-button"><span data-icon="folder"></span>Choose a .wick file…</button></div>
+      <label>Or paste a link<input name="url" type="text" placeholder="https://github.com/someone/macros" spellcheck="false" autocomplete="off"></label>
+      <div class="actions end"><button value="cancel" formnovalidate>Cancel</button><button value="continue" class="primary">Continue</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="installDialog" class="wide">
+    <form method="dialog" id="installForm">
+      <div id="installChoose" class="hidden">
+        <h2>Pick a macro</h2>
+        <p id="installChooseText" class="small"></p>
+        <div id="installChoices" class="install-choices"></div>
+      </div>
+      <div id="installReview">
+        <div class="install-head">
+          <span class="mark large"></span>
+          <div>
+            <h2 id="installName"></h2>
+            <p id="installMeta" class="small"></p>
+          </div>
+        </div>
+        <p id="installDescription"></p>
+        <div id="installBadges" class="badges"></div>
+        <ul id="installProblems" class="problems hidden"></ul>
+        <h3 class="dialog-section">It can</h3>
+        <ul id="installPermissions" class="permission-list"></ul>
+        <p class="small">Macros run in Wick's sandbox: they see the game window and send input to it while it's focused. They can't read your files, use the network or start programs, and F8 always stops them.</p>
+        <div id="installReadmeBlock">
+          <h3 class="dialog-section">Read me</h3>
+          <pre id="installReadme" class="readme"></pre>
+        </div>
+        <h3 class="dialog-section">Files</h3>
+        <div id="installFiles" class="file-list"></div>
+      </div>
+      <div class="actions end"><button value="cancel" formnovalidate>Cancel</button><button id="installConfirm" value="install" class="ember">Install</button></div>
+    </form>
+  </dialog>
+
+  <div id="dropZone" class="drop-zone hidden"><div><span data-icon="download"></span><b>Drop to install</b><span>A .wick file or a link to a macro</span></div></div>
 
   <div id="toasts" class="toasts" aria-live="polite"></div>
   <script type="module" src="app.js"></script>

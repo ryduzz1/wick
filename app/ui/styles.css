@@ -259,3 +259,45 @@ dialog label.check-row + p { margin-top: 8px; }
 .run-row span { color: var(--muted); font: 11px var(--mono); font-variant-numeric: tabular-nums; }
 .run-detail { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
 .run-detail .run-log { max-height: 180px; }
+
+/* Sharing: install screen, drop zone, calibration */
+dialog.wide { width: 640px; max-height: calc(100vh - 60px); overflow: auto; }
+.install-head { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
+.install-head .mark.large { width: 48px; height: 48px; }
+.install-head h2 { margin: 0 0 2px; }
+.install-head p { margin: 0; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.badge { font-size: 11px; border: 1px solid #464646; border-radius: 12px; padding: 3px 9px; color: #cfcfcf; background: #2a2a2a; }
+.badge.ember { border-color: var(--ember); background: var(--ember-soft); color: var(--text); min-width: 0; font-weight: 400; }
+.badge.error, .problems { color: var(--red); }
+.badge.error { border-color: #65423a; background: #2b2120; }
+.problems { font-size: 12px; margin: 12px 0 0; padding-left: 18px; line-height: 1.6; }
+.permission-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #d6d6d6; }
+.permission-list li { display: flex; gap: 8px; align-items: baseline; }
+.permission-list li::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #8c8c8c; flex-shrink: 0; transform: translateY(-2px); }
+.permission-list li.added::before { background: var(--ember); }
+.permission-list li small { color: var(--muted); font-size: 11px; }
+.readme { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #c6c6c6; background: #1b1b1b; border: 1px solid #333; border-radius: 8px; padding: 10px 12px; margin: 0; max-height: 220px; overflow: auto; }
+.file-list { display: flex; flex-direction: column; gap: 2px; }
+.file-list details { border-radius: 6px; }
+.file-list summary { display: flex; gap: 10px; align-items: center; padding: 5px 8px; border-radius: 6px; cursor: pointer; font: 12px var(--mono); color: #d6d6d6; list-style: none; }
+.file-list summary::-webkit-details-marker { display: none; }
+.file-list summary:hover { background: #2a2a2a; }
+.file-list summary span { margin-left: auto; color: #7d7d7d; font-size: 11px; }
+.file-list pre { font: 11px/1.55 var(--mono); color: #cfcfcf; background: #191919; border: 1px solid #2f2f2f; border-radius: 7px; padding: 10px 12px; margin: 4px 0 8px; max-height: 280px; overflow: auto; white-space: pre; }
+.install-choices { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.install-choices button { justify-content: flex-start; background: transparent; border-color: #3c3c3c; }
+.install-choices button small { margin-left: auto; color: #7d7d7d; font: 11px var(--mono); }
+.drop-zone { position: fixed; inset: 0; z-index: 50; background: #0009; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.drop-zone > div { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 34px 48px; border: 2px dashed var(--ember); border-radius: 16px; background: #1e1e1eee; color: var(--muted); font-size: 12px; }
+.drop-zone b { color: var(--text); font-size: 15px; font-weight: 550; }
+.drop-zone .icon { width: 28px; height: 28px; color: var(--ember); }
+.calibration-colors { display: flex; flex-direction: column; gap: 4px; }
+.calibration-colors:empty::after { content: 'This macro doesn\'t name any colors in its code.'; color: #6f6f6f; font-size: 12px; }
+.cal-row { display: grid; grid-template-columns: 22px 92px 14px 22px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 7px; font: 12px var(--mono); color: #d6d6d6; }
+.cal-row:hover { background: #262626; }
+.cal-row.picking { background: var(--ember-soft); }
+.cal-row .swatch { width: 22px; height: 22px; border-radius: 5px; }
+.cal-row .arrow { color: #6f6f6f; }
+.cal-row button { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.cal-row .same { color: #7d7d7d; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }

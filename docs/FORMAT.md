@@ -1,6 +1,6 @@
 # Macro format and sharing
 
-> Format version 1. Folders, `wick.json`, `regions.json`, the entry file, settings, permissions and the simulator setup work today; templates and routes work too; `start.png`, `.wick` packages, installing and calibration are planned. See the [roadmap](ROADMAP.md).
+> Format version 1. Folders, `wick.json`, `regions.json`, the entry file, settings, permissions, the simulator setup, templates, routes, `.wick` packages, installing, updates and calibration work today; `start.png` and the public library index are planned. See the [roadmap](ROADMAP.md).
 
 A macro is a folder. Everything needed to run it is inside, and everything personal to one user (calibration, settings, recordings) lives outside it. That split is what makes a macro shareable: you can zip the folder, send it, and the other person's copy behaves the same once calibrated to their screen.
 
@@ -95,17 +95,18 @@ Bigger macros are state machines: each state has a check, a timeout and a recove
 
 ## Sharing
 
-- **Export:** `.wick` is the macro folder zipped, plus a SHA-256 of the contents in the archive comment. One file, easy to send or attach.
-- **Install:** drag a `.wick` onto Wick, open a `wick://install?url=…` link, or paste a GitHub repo or Gist URL. A repo can hold one macro at its root or many in subfolders.
-- **Install screen:** shows the README, the game, the permissions, and the full source, before anything runs.
-- **Updates:** macros installed from a URL or repo can check for new versions. An update that adds a permission asks again.
+- **Export:** `.wick` is the macro folder zipped, plus a SHA-256 of the contents in the archive comment (`wick-sha256:<hash>`). One file, easy to send or attach. The hash covers every file's name and contents, so the same folder always packs to the same file. Dot files, `node_modules`, and the generated `AGENTS.md`, `CLAUDE.md` and `wick.d.ts` are left out. The Export button, `wick pack` and `wick_pack` make one.
+- **Install:** drop a `.wick` (or a link) onto Wick, double-click a `.wick`, open a `wick://install?url=…` link, or use Install macro (⇧⌘I) to pick a file or paste a link to a `.wick`, a GitHub repo (optionally `/tree/<branch>/<subfolder>`) or a Gist. A repo can hold one macro at its root or many in subfolders; with many, Wick asks which. Links must be `https`.
+- **Install screen:** shows the name, version, author and target, whether the files still match the package's hash, the permissions in plain words, the README, and every file's source, before anything is written. A package that changed after export, or has unsafe paths or a broken manifest, can't be installed.
+- **Updates:** a macro installed from a link has Check for updates. It installs over the old folder in place (matched on `id`), keeps `.wick/` (recordings, local data), settings and calibration, and marks any permission the new version adds. Wick records where each macro came from in `.wick/install.json`.
+- **Library index (later):** a public GitHub repo of `index.json` entries pointing to macro repos, browsable in the app. No Wick server.
 - **Library index (later):** a public GitHub repo of `index.json` entries pointing to macro repos, browsable in the app. No Wick server.
 
 ## Calibration
 
-The first time you run a shared macro, Wick overlays its regions on your Roblox window and runs each detector once. If something is off (a region misplaced by a different UI scale, a color shifted by graphics settings), you drag the region or click the right color, and Wick saves the correction. It can also ask an agent to fix it.
+An installed macro's regions show on the live view over your game. If one is off (a different UI scale), drag it to fit; if a color the macro tracks looks different in your game (graphics settings, a shader), pick it in the Calibration card by clicking what your game shows. Wick keeps both as corrections: moved regions replace the macro's by name, and picked colors swap the macro's color for yours whenever it tracks it. `wick calibration` and `wick_calibration` do the same for agents.
 
-Calibration is saved per macro and per user under Wick's app data, never in the macro folder, so exporting a macro never includes your adjustments.
+Calibration is saved per macro id and per user in Wick's app data (`calibration/<id>.json`), never in the macro folder, so exports never include it and updates keep it. Reset puts the macro back to its own regions and colors.
 
 ## Permissions and the sandbox
 
@@ -171,6 +172,6 @@ The score adds a `world` object: the bag, fish caught and sold, sales, coins, wh
 Stored in Wick's app data directory, keyed by macro `id`:
 
 - `settings.json`: the user's values for the manifest's `settings`.
-- `calibration.json`: region and color corrections.
+- `calibration/<id>.json`: region and color corrections.
 - `runs/`: run logs and telemetry.
 - `recordings/`: clips and traces.

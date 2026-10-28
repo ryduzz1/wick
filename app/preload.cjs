@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld(
   'wick',
@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on('wick:event', listener);
       return () => ipcRenderer.removeListener('wick:event', listener);
     },
+    // Where a dropped file lives, so a dropped .wick can be installed.
+    pathForFile: (file) => webUtils.getPathForFile(file),
     platform: process.platform,
   }),
 );

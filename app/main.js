@@ -7,7 +7,9 @@ import { EngineClient, enginePath } from './engine-client.js';
 import { createCommands } from './commands.js';
 import { serve } from './control.js';
 import * as library from './library.js';
+import { Calibrations, colorsIn } from './calibration.js';
 import { checkManifest, DEFAULT_INPUT, loadMacro, MacroError } from './macro-loader.js';
+import * as sharing from './package.js';
 import { RunHistory } from './runs.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +54,9 @@ function exampleFolders() {
 
 let history = null;
 const runHistory = () => (history ??= new RunHistory(path.join(app.getPath('userData'), 'runs')));
+let calibrationStore = null;
+const calibrations = () => (calibrationStore ??= new Calibrations(path.join(app.getPath('userData'), 'calibration')));
+const calibrationFor = (id) => calibrations().get(id);
 
 const libraryDir = () => process.env.WICK_LIBRARY || preferences().library || library.defaultLibrary();
 
@@ -77,13 +82,22 @@ function describeMacro(folder) {
     problems.push(`regions.json couldn't be read: ${e.message}`);
   }
   const example = exampleFolders().includes(folder);
+  // Installed macros keep this user's region changes as calibration, so
+  // updates don't overwrite them and exports don't include them.
+  const install = sharing.installInfo(folder);
+  const calibration = install ? calibrationFor(manifest.id) : null;
   return {
     folder,
     example,
     editable: !example,
     inLibrary: inLibrary(folder),
     entry: manifest.entry ?? 'main.ts',
-    regions,
+    regions: calibration ? { ...regions, ...calibration.regions } : regions,
+    installed: Boolean(install),
+    source: install?.source ?? null,
+    calibration,
+    version: manifest.version ?? null,
+    author: manifest.author ?? null,
     id: manifest.id,
     name: manifest.name ?? path.basename(folder),
     description: manifest.description ?? '',
@@ -184,8 +198,61 @@ const actions = {
     return true;
   },
   saveRegions({ folder, regions }) {
-    if (!describeMacro(folder).editable) throw new MacroError('Examples can\'t be edited. Make a copy first.');
+    const m = describeMacro(folder);
+    if (!m.editable) throw new MacroError('Examples can\'t be edited. Make a copy first.');
+    if (m.installed) {
+      const own = library.readRegions(folder);
+      const cal = calibrations().setRegions(m.id, regions, own);
+      return { ...own, ...cal.regions };
+    }
     return library.saveRegions(folder, regions);
+  },
+  async exportMacro({ folder }) {
+    const m = describeMacro(folder);
+    const result = await dialog.showSaveDialog(window, {
+      title: 'Export macro',
+      defaultPath: path.join(app.getPath('documents'), `${path.basename(folder)}-${m.version ?? '0.1.0'}.wick`),
+      filters: [{ name: 'Wick macro', extensions: ['wick'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    return sharing.exportMacro(folder, result.filePath);
+  },
+  async chooseInstallFile() {
+    const result = await dialog.showOpenDialog(window, { title: 'Install a macro', properties: ['openFile'], filters: [{ name: 'Wick macro', extensions: ['wick'] }] });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return prepareInstall({ source: result.filePaths[0] });
+  },
+  prepareInstall: (data) => prepareInstall(data),
+  // The renderer calls this once it's listening; anything the OS handed Wick
+  // before then (a double-clicked .wick, a wick:// link) comes back here.
+  takeInstallRequests() {
+    rendererReady = true;
+    return openRequests.splice(0);
+  },
+  confirmInstall({ token }) {
+    const pending = pendingInstalls.get(token);
+    if (!pending) throw new MacroError('That install has expired. Open it again.');
+    pendingInstalls.delete(token);
+    const result = sharing.install(pending.files, libraryDir(), { source: pending.source });
+    return { ...result, macro: describeMacro(result.folder) };
+  },
+  async checkUpdate({ folder }) {
+    const source = sharing.installInfo(folder)?.source;
+    if (!source?.url) throw new MacroError('This macro wasn\'t installed from a link, so there\'s nowhere to check.');
+    const found = await prepareInstall({ source: source.url, macro: source.folder });
+    return found.sameAsInstalled ? { upToDate: true } : found;
+  },
+  async calibrationColors({ folder }) {
+    const spec = await loadMacro(folder);
+    return { colors: colorsIn(spec.files), mapped: calibrationFor(spec.id).colors };
+  },
+  setCalibrationColor({ folder, from, to }) {
+    calibrations().setColor(describeMacro(folder).id, from, to);
+    return describeMacro(folder);
+  },
+  resetCalibration({ folder }) {
+    calibrations().reset(describeMacro(folder).id);
+    return describeMacro(folder);
   },
   updateManifest({ folder, changes }) {
     if (!describeMacro(folder).editable) throw new MacroError('Examples can\'t be edited. Make a copy first.');
@@ -238,7 +305,7 @@ const actions = {
     return { ...DEFAULT_INPUT, ...preferences().input };
   },
   async run({ folder, target, settings }) {
-    const spec = await loadMacro(folder, { settings, input: preferences().input });
+    const spec = await loadMacro(folder, { settings, input: preferences().input, calibration: calibrationFor });
     await ensureSession(target, spec.simulator);
     await engine.call('macro.run', { macro: spec });
     return { id: spec.id };
@@ -246,7 +313,7 @@ const actions = {
   stop: () => engine.call('macro.stop'),
   killswitch: () => engine.call('killswitch'),
   async simulate({ folder, settings, seeds = 5, seconds = 30 }) {
-    const spec = await loadMacro(folder, { settings, input: preferences().input });
+    const spec = await loadMacro(folder, { settings, input: preferences().input, calibration: calibrationFor });
     const runs = await Promise.all(
       Array.from({ length: seeds }, (_, i) =>
         engine.call('sim.run', { macro: { ...spec, human: spec.human && { ...spec.human, seed: i + 1 } }, scenario: { ...spec.simulator, seed: i + 1 }, seconds }),
@@ -279,6 +346,7 @@ async function startControl() {
     savedSettings: (id) => preferences().settings?.[id] ?? {},
     inputPreferences: () => ({ ...DEFAULT_INPUT, ...preferences().input }),
     runHistory: () => runHistory(),
+    calibrations: calibrations(),
     get libraryDir() {
       return libraryDir();
     },
@@ -290,6 +358,52 @@ async function startControl() {
     process.stderr.write(`Wick couldn't open its control socket, so the wick CLI will use its own engine: ${e.message}\n`);
   }
 }
+
+// Installs waiting for the user to confirm on the install screen.
+const pendingInstalls = new Map();
+
+/**
+ * Reads a macro from a .wick file or a link and returns what the install
+ * screen shows, with a token to confirm it. Nothing is written yet.
+ */
+async function prepareInstall({ source, macro: which } = {}) {
+  let origin;
+  let macros;
+  if (!/^[a-z]+:\/\//i.test(source) && fs.existsSync(source)) {
+    const { files, declaredHash } = sharing.openPackage(fs.readFileSync(source));
+    origin = null;
+    macros = sharing.macrosIn(files).map((m) => ({ ...m, declaredHash: m.folder === '' ? declaredHash : null }));
+  } else {
+    const fetched = await sharing.fetchSource(source);
+    origin = { kind: fetched.source.kind, url: fetched.source.url };
+    macros = fetched.macros;
+  }
+  if (which != null) macros = macros.filter((m) => m.folder === which);
+  if (!macros.length) throw new MacroError('There\'s no Wick macro there.');
+  if (macros.length > 1) return { source, choose: macros.map((m) => ({ folder: m.folder, name: JSON.parse(m.files.get('wick.json')).name ?? m.folder })) };
+  const [m] = macros;
+  const info = sharing.inspect(m.files, { libraryDir: libraryDir(), declaredHash: m.declaredHash });
+  const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  pendingInstalls.clear();
+  pendingInstalls.set(token, { files: m.files, source: origin && { ...origin, folder: m.folder } });
+  return { token, source: origin?.url ?? path.basename(source), ...info };
+}
+
+// wick:// links and .wick files the OS hands to Wick, held until the window is ready.
+const openRequests = [];
+let rendererReady = false;
+
+function requestInstall(source) {
+  if (!source) return;
+  if (rendererReady) forward('app.install', { source });
+  else openRequests.push(source);
+  if (window && !window.isDestroyed()) {
+    if (window.isMinimized()) window.restore();
+    window.focus();
+  }
+}
+
+const installArg = (argv) => argv.find((a) => a.startsWith('wick://') || a.toLowerCase().endsWith('.wick'));
 
 async function dispatch(action, data) {
   const handler = actions[action];
@@ -387,6 +501,48 @@ async function smokeReport() {
   } catch {
     shown.cli = { error: cli.error ?? cli.stderr };
   }
+  // Sharing: export an example, open it on the install screen, install it,
+  // and calibrate a color on the installed copy.
+  const pack = path.join(app.getPath('temp'), `wick-smoke-${process.pid}.wick`);
+  sharing.exportMacro(path.join(root, 'examples', 'fishing-trip'), pack);
+  forward('app.install', { source: pack });
+  await sleep(800);
+  shown.install = await js(`({
+    open: document.getElementById('installDialog').open,
+    name: document.getElementById('installName').textContent,
+    badges: [...document.querySelectorAll('#installBadges .badge')].map((b) => b.textContent),
+    permissions: document.querySelectorAll('#installPermissions li').length,
+    files: document.querySelectorAll('#installFiles details').length,
+    button: document.getElementById('installConfirm').textContent,
+  })`);
+  if (process.env.WICK_SMOKE_DIALOG === 'install') {
+    await js(`document.querySelector('#installFiles details:nth-child(3)')?.setAttribute('open', '')`);
+  } else {
+    await js(`document.getElementById('installConfirm').click()`);
+    await sleep(1500);
+    shown.installed = await js(`({
+      name: document.getElementById('macroName').textContent,
+      calibration: !document.getElementById('calibrationCard').classList.contains('hidden'),
+      colors: document.querySelectorAll('#calibrationColors .cal-row').length,
+    })`);
+    const installed = sharing.findInstalled(libraryDir(), 'wick/fishing-trip');
+    shown.installed.folder = Boolean(installed && sharing.installInfo(installed));
+    if (installed) {
+      const id = JSON.parse(fs.readFileSync(path.join(installed, 'wick.json'), 'utf8')).id;
+      await js(`document.querySelector('#calibrationColors .cal-row button').click()`);
+      await sleep(200);
+      await js(`(() => {
+        const c = document.getElementById('liveCanvas');
+        const b = c.getBoundingClientRect();
+        const at = (type) => c.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, clientX: b.left + 5, clientY: b.top + 5 }));
+        at('pointerdown'); at('pointerup');
+      })()`);
+      await sleep(800);
+      shown.installed.calibrated = Object.keys(calibrations().get(id).colors).length;
+      if (process.env.WICK_SMOKE_DIALOG !== 'calibration') calibrations().reset(id);
+    }
+  }
+  fs.rmSync(pack, { force: true });
   if (process.env.WICK_SMOKE_SHOT) {
     if (process.env.WICK_SMOKE_SCROLL) await js(`document.querySelector('main').scrollTop = ${Number(process.env.WICK_SMOKE_SCROLL)}`);
     await sleep(100);
@@ -395,7 +551,9 @@ async function smokeReport() {
   }
   const ok = errors.length === 0 && shown.engine === 'Engine running' && Boolean(shown.macro) && shown.previewDrawn &&
     shown.created === 'Smoke test' && shown.regions.includes('area') && shown.movedRegion?.x > 0 && /^[1-9]\d* px/.test(shown.matches) &&
-    shown.cli?.usedApp && shown.cli?.saved && shown.input?.precision === 0.7 && shown.trace?.visible && (process.env.WICK_SMOKE_DIALOG === 'trace' || shown.runs === 1);
+    shown.cli?.usedApp && shown.cli?.saved && shown.input?.precision === 0.7 && shown.trace?.visible && (process.env.WICK_SMOKE_DIALOG === 'trace' || shown.runs === 1) &&
+    shown.install.open && shown.install.name === 'Fishing trip' && shown.install.permissions > 0 && shown.install.files > 3 &&
+    (process.env.WICK_SMOKE_DIALOG === 'install' || (shown.installed?.name === 'Fishing trip' && shown.installed.folder && shown.installed.calibration && shown.installed.colors > 0 && shown.installed.calibrated === 1));
   process.stdout.write(`WICK_SMOKE ${JSON.stringify({ ok, shown, errors })}\n`);
   app.exit(ok ? 0 : 1);
 }
@@ -416,10 +574,33 @@ function createWindow() {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
   window.loadFile(path.join(directory, 'ui', 'index.html'));
+  window.webContents.on('did-start-loading', () => {
+    rendererReady = false;
+  });
   window.on('closed', () => {
     window = null;
+    rendererReady = false;
   });
 }
+
+// One Wick at a time: a second launch (from a wick:// link or a .wick file)
+// hands its request to the running app. Smoke runs stay independent.
+if (!smoke && !app.requestSingleInstanceLock()) app.exit(0);
+app.on('second-instance', (event, argv) => requestInstall(installArg(argv.slice(1))));
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  requestInstall(url);
+});
+app.on('open-file', (event, file) => {
+  if (!file.toLowerCase().endsWith('.wick')) return;
+  event.preventDefault();
+  requestInstall(file);
+});
+// Only the packaged app claims wick:// links, so development runs don't
+// change which program the system opens them with.
+if (app.isPackaged) app.setAsDefaultProtocolClient('wick');
+const launchRequest = installArg(process.argv.slice(app.isPackaged ? 1 : 2));
+if (launchRequest) openRequests.push(launchRequest);
 
 app.whenReady().then(async () => {
   if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(icon);
@@ -428,7 +609,7 @@ app.whenReady().then(async () => {
       ...(process.platform === 'darwin'
         ? [{ label: 'Wick', submenu: [{ role: 'about' }, { type: 'separator' }, { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => forward('app.settings', {}) }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }]
         : []),
-      { label: 'File', submenu: [{ label: 'New Macro…', accelerator: 'CmdOrCtrl+N', click: () => forward('app.newMacro', {}) }, { label: 'Open Macro Folder…', accelerator: 'CmdOrCtrl+O', click: () => forward('app.openMacro', {}) }, { label: 'Open Test Bench', click: openTestBench }, ...(process.platform === 'darwin' ? [] : [{ label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => forward('app.settings', {}) }]), { role: process.platform === 'darwin' ? 'close' : 'quit' }] },
+      { label: 'File', submenu: [{ label: 'New Macro…', accelerator: 'CmdOrCtrl+N', click: () => forward('app.newMacro', {}) }, { label: 'Open Macro Folder…', accelerator: 'CmdOrCtrl+O', click: () => forward('app.openMacro', {}) }, { label: 'Install Macro…', accelerator: 'CmdOrCtrl+Shift+I', click: () => forward('app.installMacro', {}) }, { label: 'Open Test Bench', click: openTestBench }, ...(process.platform === 'darwin' ? [] : [{ label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => forward('app.settings', {}) }]), { role: process.platform === 'darwin' ? 'close' : 'quit' }] },
       { role: 'editMenu' },
       { role: 'windowMenu' },
     ]),
