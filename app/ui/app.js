@@ -99,7 +99,7 @@ const fmtSeconds = (ms) => {
   return s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` : `${s}s`;
 };
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
-const editable = () => Boolean(state.selected?.editable) && !state.running;
+const editable = () => Boolean(state.selected) && !state.running;
 // Installed macros can be moved and resized to fit (as calibration), but
 // their regions aren't added, renamed or removed: that's the author's code.
 const reshapeable = () => editable() && !state.selected.installed;
@@ -134,8 +134,7 @@ function renderMacroList() {
   list.replaceChildren();
   const groups = [
     ['Library', state.macros.filter((m) => m.inLibrary)],
-    ['Opened', state.macros.filter((m) => !m.inLibrary && !m.example)],
-    ['Examples', state.macros.filter((m) => m.example)],
+    ['Opened', state.macros.filter((m) => !m.inLibrary)],
   ];
   for (const [title, macros] of groups) {
     if (!macros.length) continue;
@@ -224,11 +223,9 @@ async function saveSettings() {
 
 function renderHeader(m) {
   $('macroName').textContent = m.name;
-  $('macroDescription').textContent = m.error ? `Problem: ${m.error}` : m.description || (m.editable ? 'No description yet.' : '');
+  $('macroDescription').textContent = m.error ? `Problem: ${m.error}` : m.description || 'No description yet.';
   $('crumbMacro').textContent = m.name;
   $('runButton').disabled = Boolean(m.error);
-  $('copyButton').classList.toggle('hidden', m.editable);
-  $('editCode').classList.toggle('hidden', !m.editable);
   $('updateButton').classList.toggle('hidden', !m.source?.url);
 }
 
@@ -252,16 +249,13 @@ function renderDetails(m) {
   }
   $('macroId').textContent = m.id ?? '';
   $('deleteMacro').textContent = m.inLibrary ? 'Move to Trash' : 'Remove from list';
-  $('deleteMacro').classList.toggle('hidden', m.example);
-  $('detailsNote').textContent = m.example
-    ? 'Examples come with Wick and can\'t be changed. Make a copy to edit it.'
-    : m.installed ? `Installed${m.source?.url ? ` from ${m.source.url}` : ''}${m.author ? `, by ${m.author}` : ''}. ${m.folder}`
+  $('detailsNote').textContent = m.installed ? `Installed${m.source?.url ? ` from ${m.source.url}` : ''}${m.author ? `, by ${m.author}` : ''}. ${m.folder}`
       : m.inLibrary ? m.folder : `Opened from ${m.folder}. Removing it from the list leaves the folder alone.`;
 }
 
 async function saveDetails() {
   const m = state.selected;
-  if (!m?.editable) return;
+  if (!m) return;
   const form = $('detailsForm');
   const changes = {
     name: form.elements.name.value.trim() || m.name,
@@ -293,9 +287,7 @@ function renderEditing() {
       ? 'Stop the macro to change regions.'
       : state.selected.installed
         ? 'Drag a region on the live view to fit your screen. Your changes are kept as calibration: updates don\'t overwrite them and exports leave them out.'
-      : state.selected.editable
-        ? 'Drag a region on the live view to move it, or its corners to resize it. Positions are kept relative to the anchor, so they hold on other screen sizes.'
-        : 'Examples can\'t be changed. Make a copy to edit its regions.';
+        : 'Drag a region on the live view to move it, or its corners to resize it. Positions are kept relative to the anchor, so they hold on other screen sizes.';
   renderRegions();
   renderCalibration();
 }
@@ -418,7 +410,7 @@ function drawPreview(p) {
 let saveTimer = null;
 function saveRegions(regions) {
   const m = state.selected;
-  if (!m?.editable) return;
+  if (!m) return;
   m.regions = structuredClone(regions);
   renderRegions();
   clearTimeout(saveTimer);
@@ -877,18 +869,6 @@ $('showLibrary').onclick = async () => {
   if (info) call('showFolder', { folder: info.folder, create: true });
 };
 
-async function copySelected() {
-  const m = state.selected;
-  if (!m || state.running) return;
-  try {
-    const copy = await call('copyMacro', { folder: m.folder });
-    await showMacro(copy.folder);
-    toast('Copied to your library', `${copy.name} is yours to edit.`);
-  } catch (e) {
-    toast('Couldn\'t copy the macro', e.message, 'error');
-  }
-}
-
 async function deleteSelected() {
   const m = state.selected;
   if (!m || state.running) return;
@@ -1315,7 +1295,7 @@ wick.onEvent((method, params) => {
       if (state.selected) call('showFolder', { folder: state.selected.folder });
       break;
     case 'app.editCode':
-      if (state.selected?.editable) call('editCode', { folder: state.selected.folder });
+      if (state.selected) call('editCode', { folder: state.selected.folder });
       break;
     case 'app.onboarding':
       showOnboarding(true);
@@ -1367,12 +1347,12 @@ $('exportButton').onclick = exportSelected;
 $('updateButton').onclick = checkUpdate;
 $('openSettings').onclick = openSettings;
 $('emptyNew').onclick = newMacro;
+$('emptyInstall').onclick = openInstallSource;
 $('openMacro').onclick = openMacro;
 $('runButton').onclick = run;
 $('stopButton').onclick = () => call('stop').catch((e) => toast('Couldn\'t stop', e.message, 'error'));
 $('killChip').onclick = () => call('killswitch');
 $('simulateButton').onclick = simulate;
-$('copyButton').onclick = copySelected;
 $('editCode').onclick = () => state.selected && call('editCode', { folder: state.selected.folder });
 $('openBench').onclick = () => call('openTestBench');
 $('showFolder').onclick = () => state.selected && call('showFolder', { folder: state.selected.folder });

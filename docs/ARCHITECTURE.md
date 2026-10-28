@@ -87,7 +87,7 @@ Regions are anchored to the window's content area, not its frame:
 
 ## App
 
-Built: the macro library (your library folder, folders you open and the bundled examples), a target picker, the live view with region and tracker overlays and an editor for regions and colors, run controls and states, stat tiles, a live trace graph, run history, a settings form generated from the manifest, the run log, a simulator test, app settings (human input and the library folder), macOS permission onboarding and the kill-switch chip. The agent surface, the `wick` CLI and an MCP server, calls the same command layer (see [AI-AGENTS.md](AI-AGENTS.md)).
+Built: the macro library (your library folder and folders you open; the repo's examples aren't shown or bundled, open one as a folder to try it), a target picker, the live view with region and tracker overlays and an editor for regions and colors, run controls and states, stat tiles, a live trace graph, run history, a settings form generated from the manifest, the run log, a simulator test, app settings (human input and the library folder), macOS permission onboarding and the kill-switch chip. The agent surface, the `wick` CLI and an MCP server, calls the same command layer (see [AI-AGENTS.md](AI-AGENTS.md)).
 
 *(Planned)*:
 

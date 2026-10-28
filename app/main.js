@@ -29,7 +29,6 @@ let askedForPermissions = false;
 let macroWatcher = null;
 // The target a macro is running on, from the engine's events.
 let runningTarget = null;
-// Macro folders shown in the app: the bundled examples plus any the user opened.
 const preferencesPath = () => path.join(app.getPath('userData'), 'preferences.json');
 
 function preferences() {
@@ -47,12 +46,6 @@ function savePreferences(update) {
   return next;
 }
 
-function exampleFolders() {
-  const dir = app.isPackaged ? path.join(process.resourcesPath, 'examples') : path.join(root, 'examples');
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).map((name) => path.join(dir, name)).filter((p) => fs.existsSync(path.join(p, 'wick.json')));
-}
-
 let history = null;
 const runHistory = () => (history ??= new RunHistory(path.join(app.getPath('userData'), 'runs')));
 // Names of macros started here, by id, for the mini window.
@@ -65,9 +58,10 @@ const calibrationFor = (id) => calibrations().get(id);
 
 const libraryDir = () => process.env.WICK_LIBRARY || preferences().library || library.defaultLibrary();
 
+// Macro folders shown in the app: the library plus any folders the user opened.
 function macroFolders() {
   const opened = (preferences().folders ?? []).filter((p) => fs.existsSync(path.join(p, 'wick.json')));
-  return [...new Set([...library.listLibrary(libraryDir()), ...opened, ...exampleFolders()])];
+  return [...new Set([...library.listLibrary(libraryDir()), ...opened])];
 }
 
 const inLibrary = (folder) => path.dirname(folder) === path.resolve(libraryDir());
@@ -86,15 +80,12 @@ function describeMacro(folder) {
   } catch (e) {
     problems.push(`regions.json couldn't be read: ${e.message}`);
   }
-  const example = exampleFolders().includes(folder);
   // Installed macros keep this user's region changes as calibration, so
   // updates don't overwrite them and exports don't include them.
   const install = sharing.installInfo(folder);
   const calibration = install ? calibrationFor(manifest.id) : null;
   return {
     folder,
-    example,
-    editable: !example,
     inLibrary: inLibrary(folder),
     entry: manifest.entry ?? 'main.ts',
     regions: calibration ? { ...regions, ...calibration.regions } : regions,
@@ -182,9 +173,7 @@ const actions = {
   async newMacro({ name, target }) {
     return describeMacro(library.createMacro(libraryDir(), { name, target }));
   },
-  copyMacro: ({ folder }) => describeMacro(library.copyMacro(folder, libraryDir())),
   async deleteMacro({ folder }) {
-    if (exampleFolders().includes(folder)) throw new MacroError('Examples come with Wick and can\'t be deleted.');
     const name = describeMacro(folder).name ?? path.basename(folder);
     if (inLibrary(folder)) {
       const { response } = await dialog.showMessageBox(window, {
@@ -204,7 +193,6 @@ const actions = {
   },
   saveRegions({ folder, regions }) {
     const m = describeMacro(folder);
-    if (!m.editable) throw new MacroError('Examples can\'t be edited. Make a copy first.');
     if (m.installed) {
       const own = library.readRegions(folder);
       const cal = calibrations().setRegions(m.id, regions, own);
@@ -260,7 +248,6 @@ const actions = {
     return describeMacro(folder);
   },
   updateManifest({ folder, changes }) {
-    if (!describeMacro(folder).editable) throw new MacroError('Examples can\'t be edited. Make a copy first.');
     library.updateManifest(folder, changes);
     return describeMacro(folder);
   },
@@ -470,21 +457,17 @@ async function smokeReport() {
     if (event.level === 'error') errors.push(event.message);
   });
   await new Promise((resolve) => window.webContents.once('did-finish-load', resolve));
-  // Give the renderer time to reach the engine and pick a macro, then switch
-  // to the simulator, which needs no window or permissions, and let it draw.
-  await new Promise((resolve) => setTimeout(resolve, 2500));
-  await window.webContents.executeJavaScript(`document.querySelector('#targetPicker button').click()`);
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-  const shown = await window.webContents.executeJavaScript(`({
-    macro: document.getElementById('macroName').textContent,
-    engine: document.getElementById('engineLabel').textContent,
-    target: document.getElementById('crumbTarget').textContent,
-    fps: document.getElementById('fpsText').textContent,
-    previewDrawn: document.getElementById('liveEmpty').classList.contains('hidden'),
-  })`);
-  // Exercise the editor: create a macro, drag its region, and check a color.
+  // A fresh profile starts empty: no bundled examples in the sidebar.
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const js = (code) => window.webContents.executeJavaScript(code);
+  await sleep(2500);
+  const shown = await js(`({
+    engine: document.getElementById('engineLabel').textContent,
+    empty: !document.getElementById('emptyView').classList.contains('hidden'),
+    sidebar: document.getElementById('macroList').textContent,
+  })`);
+  // Exercise the editor: create a macro on the simulator (which needs no
+  // window or permissions), let it draw, drag its region, and check a color.
   await js(`document.getElementById('newMacro').click()`);
   await sleep(300);
   await js(`(() => {
@@ -493,7 +476,12 @@ async function smokeReport() {
     f.elements.target.value = 'sim';
     f.querySelector('button[value=create]').click();
   })()`);
-  await sleep(1500);
+  await sleep(2500);
+  Object.assign(shown, await js(`({
+    target: document.getElementById('crumbTarget').textContent,
+    fps: document.getElementById('fpsText').textContent,
+    previewDrawn: document.getElementById('liveEmpty').classList.contains('hidden'),
+  })`));
   shown.created = await js(`document.getElementById('macroName').textContent`);
   shown.regions = await js(`[...document.querySelectorAll('.region-row')].map((r) => r.dataset.name)`);
   await js(`(() => {
@@ -512,11 +500,6 @@ async function smokeReport() {
   shown.movedRegion = fs.existsSync(smokeFolder) ? library.readRegions(smokeFolder).area : null;
   shown.matches = await js(`document.getElementById('matchText').textContent`);
   // Run the new macro on the simulator briefly: the trace graph should fill.
-  // For a screenshot of the graph, run the bar example instead.
-  if (process.env.WICK_SMOKE_DIALOG === 'trace') {
-    await js(`[...document.querySelectorAll('#macroList button')].find((b) => b.textContent.includes(${JSON.stringify(process.env.WICK_SMOKE_EXAMPLE ?? 'Bar minigame')}))?.click()`);
-    await sleep(800);
-  }
   await js(`document.getElementById('runButton').click()`);
   await sleep(process.env.WICK_SMOKE_DIALOG === 'trace' ? 6000 : 1500);
   shown.trace = await js(`({ visible: !document.getElementById('traceCard').classList.contains('hidden'), legend: document.getElementById('traceLegend').textContent })`);
@@ -553,7 +536,8 @@ async function smokeReport() {
   // Sharing: export an example, open it on the install screen, install it,
   // and calibrate a color on the installed copy.
   const pack = path.join(app.getPath('temp'), `wick-smoke-${process.pid}.wick`);
-  sharing.exportMacro(exampleFolders().find((f) => path.basename(f) === 'fishing-trip'), pack);
+  // The repo's examples aren't in the app; smoke:dist passes their folder.
+  sharing.exportMacro(path.join(process.env.WICK_SMOKE_EXAMPLES || path.join(root, 'examples'), 'fishing-trip'), pack);
   forward('app.install', { source: pack });
   await sleep(800);
   shown.install = await js(`({
@@ -598,7 +582,7 @@ async function smokeReport() {
     const image = await window.webContents.capturePage();
     fs.writeFileSync(process.env.WICK_SMOKE_SHOT, image.toPNG());
   }
-  const ok = errors.length === 0 && shown.engine === 'Engine running' && Boolean(shown.macro) && shown.previewDrawn &&
+  const ok = errors.length === 0 && shown.engine === 'Engine running' && shown.empty && !/Examples|Bar minigame/.test(shown.sidebar) && shown.previewDrawn &&
     shown.created === 'Smoke test' && shown.regions.includes('area') && shown.movedRegion?.x > 0 && /^[1-9]\d* px/.test(shown.matches) &&
     shown.cli?.usedApp && shown.cli?.saved && shown.input?.precision === 0.7 && shown.trace?.visible && (process.env.WICK_SMOKE_DIALOG === 'trace' || shown.runs === 1) &&
     /Smoke test/.test(shown.mini ?? '') && /F8 to stop/.test(shown.mini ?? '') && shown.onboarding &&

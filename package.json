@@ -43,17 +43,6 @@
       "testbench/**",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "examples",
-        "to": "examples",
-        "filter": [
-          "**/*",
-          "!**/.wick/**",
-          "!**/node_modules/**"
-        ]
-      }
-    ],
     "asar": true,
     "protocols": [
       {

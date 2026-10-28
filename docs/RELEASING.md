@@ -6,7 +6,7 @@ Wick is packaged with [electron-builder](https://www.electron.build). The config
 
 - The app (`app/`, `bin/`, `sdk/`, `testbench/`, `package.json`) in `app.asar`. Wick has no runtime npm dependencies.
 - `Resources/wick-engine` (`wick-engine.exe` on Windows), the release engine build, found by `enginePath()` through `process.resourcesPath`.
-- `Resources/examples/`, the example macros.
+- No example macros: they stay in the repo (`examples/`) for tests and docs. `smoke:dist` points the packaged smoke test at them.
 - `Resources/bin/wick` (`wick.cmd` on Windows): the CLI, which runs `bin/wick.js` with the app's own Electron acting as Node. On macOS, link it onto your PATH with `ln -s /Applications/Wick.app/Contents/Resources/bin/wick /usr/local/bin/wick`; Settings shows the exact path. Macro folders' `AGENTS.md` and `.mcp.json` point at the same executable, so agents work without Node installed.
 - The `wick://` URL scheme and the `.wick` document type (Info.plist on macOS, registry entries from the NSIS installer on Windows). The app claims `wick://` at runtime only when packaged, so development runs never change the system's handler.
 

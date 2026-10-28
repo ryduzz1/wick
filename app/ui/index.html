@@ -51,7 +51,7 @@
         <div class="section-title"><h3>Get started with Wick</h3><button id="onboardingDone" class="quiet small-button">Got it</button></div>
         <ol class="steps">
           <li id="stepPermissions"><span class="dot"></span><div><b>Let Wick see and control the game</b><p>Wick needs Screen Recording to watch the game window and Accessibility to send input to it. It only sends input to the macro's game window while that window is focused.</p></div></li>
-          <li id="stepExample"><span class="dot"></span><div><b>Try an example on the simulator</b><p>Pick Fishing trip under Examples, choose Simulator and press Run. The simulator is a stand-in game, so nothing touches Roblox.</p></div></li>
+          <li id="stepExample"><span class="dot"></span><div><b>Try a macro on the simulator</b><p>Choose the Simulator target and press Run. The simulator is a stand-in game, so nothing touches Roblox while you check that a macro works.</p></div></li>
           <li id="stepRoblox"><span class="dot"></span><div><b>Run it on Roblox</b><p>Open a game, choose the Roblox target, and click the game window so it has focus. A small panel shows the run over the game. Press <kbd>F8</kbd> from anywhere to stop.</p></div></li>
           <li><span class="dot"></span><div><b>Make your own</b><p>New macro starts a folder you can edit, or open it in Claude Code and describe the loop: Wick's agent tools let it watch the game, record you playing, and write the macro. Install macro opens ones other people share.</p></div></li>
         </ol>
@@ -60,8 +60,8 @@
       <section id="emptyView" class="welcome hidden">
         <span class="mark large"></span>
         <h1>No macros yet</h1>
-        <p>Create one, or open a folder that contains a <code>wick.json</code>.</p>
-        <div class="actions centered"><button id="emptyNew" class="primary">New macro</button></div>
+        <p>Make one, install one someone shared, or open a folder that contains a <code>wick.json</code>.</p>
+        <div class="actions centered"><button id="emptyNew" class="primary">New macro</button><button id="emptyInstall"><span data-icon="download"></span>Install macro</button></div>
       </section>
 
       <section id="macroView" class="view hidden">
@@ -79,7 +79,6 @@
           <div class="run-state" role="status"><span id="stateDot" class="dot"></span><span id="stateLabel">Ready</span></div>
           <span class="spacer"></span>
           <button id="simulateButton" class="quiet small-button" title="Run on the simulator as fast as possible, over 5 different games"><span data-icon="flask"></span>Test on simulator</button>
-          <button id="copyButton" class="quiet small-button hidden" title="Copy this example into your library so you can change it"><span data-icon="copy"></span>Make a copy</button>
           <button id="editCode" class="quiet small-button hidden"><span data-icon="code"></span>Edit code</button>
           <button id="showFolder" class="quiet small-button"><span data-icon="folder"></span>Show folder</button>
           <button id="exportButton" class="quiet small-button" title="Save this macro as a .wick file to share"><span data-icon="share"></span>Export</button>

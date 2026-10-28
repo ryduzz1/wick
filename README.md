@@ -19,7 +19,7 @@ npm install
 npm start
 ```
 
-`npm start` builds the engine (in release mode, the first time takes a minute) and opens Wick. Pick the **Bar minigame** example, then:
+`npm start` builds the engine (in release mode, the first time takes a minute) and opens Wick. Wick starts with an empty library. To try the example in `examples/bar-minigame`, press **Open macro folder** and pick that folder, then:
 
 - **Simulator:** press **Run**. Nothing on your screen is touched. **Test on simulator** runs it over five games as fast as possible.
 - **Test bench:** press **Open test bench**, pick **Test bench**, press **Run**, then click the test bench window so it has focus. Wick clicks inside it to keep the tick in the zone. Press **F8** to stop.
@@ -33,7 +33,7 @@ Other commands: `npm test` (engine and app tests on the simulator), `npm run tes
 
 ## Build the app
 
-`npm run dist:dir` makes an unsigned app in `dist/` (`dist/mac-arm64/Wick.app`, or `dist/win-unpacked/Wick.exe`) with the engine, the examples and the `wick` command bundled; `npm run smoke:dist` checks it. `npm run dist` makes the installers. Signing, notarizing and publishing are in [Releasing](docs/RELEASING.md).
+`npm run dist:dir` makes an unsigned app in `dist/` (`dist/mac-arm64/Wick.app`, or `dist/win-unpacked/Wick.exe`) with the engine and the `wick` command bundled (the examples stay in the repo); `npm run smoke:dist` checks it. `npm run dist` makes the installers. Signing, notarizing and publishing are in [Releasing](docs/RELEASING.md).
 
 ## What Wick does and doesn't touch
 

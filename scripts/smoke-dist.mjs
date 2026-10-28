@@ -24,5 +24,5 @@ if (version.status !== 0 || !/wick/i.test(version.stdout)) {
 }
 console.log(`bundled wick command: ok (${cli})`);
 
-const smoke = spawnSync(process.execPath, [join(root, 'scripts', 'smoke-app.mjs')], { stdio: 'inherit', env: { ...process.env, WICK_SMOKE_APP: app } });
+const smoke = spawnSync(process.execPath, [join(root, 'scripts', 'smoke-app.mjs')], { stdio: 'inherit', env: { ...process.env, WICK_SMOKE_APP: app, WICK_SMOKE_EXAMPLES: join(root, 'examples') } });
 process.exit(smoke.status ?? 1);
