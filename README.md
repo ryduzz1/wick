@@ -8,7 +8,26 @@ Macros are small TypeScript programs packaged as folders. They are easy to share
 
 AI agents can write macros too. Wick gives an agent (Claude Code, or any agent that can run a command or use MCP) tools to look at the game, record clips, run small experiments ("click five times and track the white marker"), and read back the numbers. The agent works out how the game behaves, writes the macro, tests it, and iterates. The agent writes the macro; it doesn't play the game itself, so the macro runs at full speed without a model in the loop.
 
-> **Status:** design stage. See the [roadmap](docs/ROADMAP.md).
+> **Status:** early. The engine, the macro runtime, the simulator, the test bench and a first app window work; sharing, agent tools, recording and the human-like input profile are next. See the [roadmap](docs/ROADMAP.md).
+
+## Run from source
+
+Install [Node.js](https://nodejs.org) 22.13 or newer and [Rust](https://rustup.rs). Then:
+
+```sh
+npm install
+npm start
+```
+
+`npm start` builds the engine (in release mode, the first time takes a minute) and opens Wick. Pick the **Bar minigame** example, then:
+
+- **Simulator:** press **Run**. Nothing on your screen is touched. **Test on simulator** runs it over five games as fast as possible.
+- **Test bench:** press **Open test bench**, pick **Test bench**, press **Run**, then click the test bench window so it has focus. Wick clicks inside it to keep the tick in the zone. Press **F8** to stop.
+- **Roblox:** adjust the example's region and colors to your game first.
+
+On macOS, Wick asks for **Screen Recording** (to see the window) and **Accessibility** (to click and to catch F8 from any app). The simulator works without either. When running from source, macOS lists these under "Electron".
+
+Other commands: `npm test` (engine and app tests on the simulator), `npm run test:engine` (Rust unit tests), `npm run check` (formatting, lints and syntax), `npm run smoke:app` (opens the app hidden and checks that it loads and draws).
 
 ## What Wick does and doesn't touch
 
@@ -37,6 +56,7 @@ Wick never opens, reads, writes or injects into the Roblox process. That is a ha
 
 - [Architecture](docs/ARCHITECTURE.md): how the app, the engine and the macro sandbox fit together.
 - [Macro format and sharing](docs/FORMAT.md): what a macro folder contains, `.wick` packages, permissions, calibration.
+- [Macro API](docs/API.md): everything a macro can do through `ctx`.
 - [Building with AI agents](docs/AI-AGENTS.md): the tools Wick gives agents and how an agent should approach a new game.
 - [Design](docs/DESIGN.md): the visual style, shared with Fuse plus Wick's ember accent and live views.
 - [Roadmap](docs/ROADMAP.md)

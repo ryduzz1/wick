@@ -73,7 +73,12 @@ fn resolve_path(files: &HashMap<String, String>, base: &str, name: &str) -> Resu
             "Macros can only import \"wick\" and their own files (\"./file.ts\"), not \"{name}\"."
         ));
     };
-    for candidate in [joined.clone(), format!("{joined}.ts"), format!("{joined}.js"), format!("{joined}/index.ts")] {
+    for candidate in [
+        joined.clone(),
+        format!("{joined}.ts"),
+        format!("{joined}.js"),
+        format!("{joined}/index.ts"),
+    ] {
         if files.contains_key(&candidate) {
             return Ok(candidate);
         }
@@ -91,9 +96,8 @@ impl Resolver for MemoryResolver {
         name: &str,
         _attributes: Option<ImportAttributes<'js>>,
     ) -> rquickjs::Result<String> {
-        resolve_path(&self.0, base, name).map_err(|message| {
-            rquickjs::Exception::throw_reference(ctx, &message)
-        })
+        resolve_path(&self.0, base, name)
+            .map_err(|message| rquickjs::Exception::throw_reference(ctx, &message))
     }
 }
 
@@ -110,7 +114,10 @@ impl Loader for MemoryLoader {
             WICK_MODULE.to_string()
         } else {
             self.0.get(name).cloned().ok_or_else(|| {
-                rquickjs::Exception::throw_reference(ctx, &format!("Couldn't find \"{name}\" in the macro folder"))
+                rquickjs::Exception::throw_reference(
+                    ctx,
+                    &format!("Couldn't find \"{name}\" in the macro folder"),
+                )
             })?
         };
         Module::declare(ctx.clone(), name, source)
@@ -126,25 +133,42 @@ pub struct MacroRuntime {
 impl MacroRuntime {
     /// Loads the prelude and starts the macro's `run`. `files` holds the
     /// macro's JavaScript (types already stripped), keyed by path in the folder.
-    pub fn start(files: HashMap<String, String>, entry: &str, init: &Value) -> Result<Self, String> {
+    pub fn start(
+        files: HashMap<String, String>,
+        entry: &str,
+        init: &Value,
+    ) -> Result<Self, String> {
         let runtime = Runtime::new().map_err(|e| e.to_string())?;
         runtime.set_memory_limit(MEMORY_LIMIT);
         runtime.set_max_stack_size(1024 * 1024);
         let deadline: Rc<Cell<Option<Instant>>> = Rc::new(Cell::new(None));
         let watch = deadline.clone();
-        runtime.set_interrupt_handler(Some(Box::new(move || watch.get().is_some_and(|d| Instant::now() > d))));
+        runtime.set_interrupt_handler(Some(Box::new(move || {
+            watch.get().is_some_and(|d| Instant::now() > d)
+        })));
         let files = Rc::new(files);
         runtime.set_loader(MemoryResolver(files.clone()), MemoryLoader(files.clone()));
         let context = Context::full(&runtime).map_err(|e| e.to_string())?;
 
-        let rt = MacroRuntime { runtime, context, deadline };
+        let rt = MacroRuntime {
+            runtime,
+            context,
+            deadline,
+        };
         let mut init = init.clone();
         init["entry"] = Value::String(entry.to_string());
         let init = init.to_string();
         rt.guarded(|ctx| {
-            ctx.eval::<(), _>(PRELUDE).catch(&ctx).map_err(|e| format!("Wick prelude failed: {e}"))?;
-            let f: Function = ctx.globals().get("__wick_init").map_err(|e| e.to_string())?;
-            f.call::<_, ()>((init,)).catch(&ctx).map_err(|e| e.to_string())
+            ctx.eval::<(), _>(PRELUDE)
+                .catch(&ctx)
+                .map_err(|e| format!("Wick prelude failed: {e}"))?;
+            let f: Function = ctx
+                .globals()
+                .get("__wick_init")
+                .map_err(|e| e.to_string())?;
+            f.call::<_, ()>((init,))
+                .catch(&ctx)
+                .map_err(|e| e.to_string())
         })?;
         Ok(rt)
     }
@@ -153,7 +177,10 @@ impl MacroRuntime {
     /// settles pending promise jobs.
     fn guarded<T>(&self, f: impl FnOnce(Ctx<'_>) -> Result<T, String>) -> Result<T, String> {
         self.deadline.set(Some(Instant::now() + STEP_LIMIT));
-        let result = self.context.with(f).and_then(|v| self.run_jobs().map(|_| v));
+        let result = self
+            .context
+            .with(f)
+            .and_then(|v| self.run_jobs().map(|_| v));
         let timed_out = self.deadline.get().is_some_and(|d| Instant::now() > d);
         self.deadline.set(None);
         match result {
@@ -181,16 +208,26 @@ impl MacroRuntime {
     pub fn step(&self, state: &Value) -> Result<Drained, String> {
         let json = state.to_string();
         self.guarded(|ctx| {
-            let f: Function = ctx.globals().get("__wick_step").map_err(|e| e.to_string())?;
-            f.call::<_, ()>((json,)).catch(&ctx).map_err(|e| e.to_string())
+            let f: Function = ctx
+                .globals()
+                .get("__wick_step")
+                .map_err(|e| e.to_string())?;
+            f.call::<_, ()>((json,))
+                .catch(&ctx)
+                .map_err(|e| e.to_string())
         })?;
         self.drain()
     }
 
     pub fn drain(&self) -> Result<Drained, String> {
         let raw: String = self.guarded(|ctx| {
-            let f: Function = ctx.globals().get("__wick_drain").map_err(|e| e.to_string())?;
-            f.call::<_, String>(()).catch(&ctx).map_err(|e| e.to_string())
+            let f: Function = ctx
+                .globals()
+                .get("__wick_drain")
+                .map_err(|e| e.to_string())?;
+            f.call::<_, String>(())
+                .catch(&ctx)
+                .map_err(|e| e.to_string())
         })?;
         let raw: RawDrain = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
         let status = match raw.status.as_str() {
@@ -199,7 +236,10 @@ impl MacroRuntime {
             "done" => Status::Done,
             _ => Status::Error(raw.error.unwrap_or_else(|| "The macro failed".into())),
         };
-        Ok(Drained { status, commands: raw.cmds })
+        Ok(Drained {
+            status,
+            commands: raw.cmds,
+        })
     }
 }
 
@@ -244,18 +284,32 @@ mod tests {
               },
             });
         "#;
-        let rt = MacroRuntime::start(files(src), "main.ts", &json!({ "settings": { "speed": 2 } })).unwrap();
+        let rt = MacroRuntime::start(
+            files(src),
+            "main.ts",
+            &json!({ "settings": { "speed": 2 } }),
+        )
+        .unwrap();
         let (status, cmds) = run_until_settled(&rt, 100);
         assert_eq!(status, Status::Done);
-        let logs: Vec<_> = cmds.iter().filter(|c| c["t"] == "log").map(|c| c["text"].clone()).collect();
+        let logs: Vec<_> = cmds
+            .iter()
+            .filter(|c| c["t"] == "log")
+            .map(|c| c["text"].clone())
+            .collect();
         assert_eq!(logs, vec![json!("start 2"), json!("clicks 3")]);
         assert_eq!(cmds.iter().filter(|c| c["t"] == "click").count(), 3);
     }
 
     #[test]
     fn imports_sibling_files() {
-        let mut f = files(r#"import { double } from "./lib/math"; export default { async run(ctx) { ctx.log(double(21)); } };"#);
-        f.insert("lib/math.ts".into(), "export const double = (n) => n * 2;".into());
+        let mut f = files(
+            r#"import { double } from "./lib/math"; export default { async run(ctx) { ctx.log(double(21)); } };"#,
+        );
+        f.insert(
+            "lib/math.ts".into(),
+            "export const double = (n) => n * 2;".into(),
+        );
         let rt = MacroRuntime::start(f, "main.ts", &json!({})).unwrap();
         let (status, cmds) = run_until_settled(&rt, 5);
         assert_eq!(status, Status::Done);
@@ -269,16 +323,28 @@ mod tests {
         } };"#;
         let rt = MacroRuntime::start(files(src), "main.ts", &json!({})).unwrap();
         let (_, cmds) = run_until_settled(&rt, 5);
-        assert_eq!(cmds[0]["text"], "undefined,undefined,undefined,undefined,undefined,undefined");
+        assert_eq!(
+            cmds[0]["text"],
+            "undefined,undefined,undefined,undefined,undefined,undefined"
+        );
     }
 
     #[test]
     fn blocks_imports_outside_the_macro() {
-        for spec in ["os", "std", "node:fs", "../secret.ts", "https://example.com/x.js"] {
+        for spec in [
+            "os",
+            "std",
+            "node:fs",
+            "../secret.ts",
+            "https://example.com/x.js",
+        ] {
             let src = format!(r#"import "{spec}"; export default {{ async run() {{}} }};"#);
             let rt = MacroRuntime::start(files(&src), "main.ts", &json!({})).unwrap();
             let (status, _) = run_until_settled(&rt, 5);
-            assert!(matches!(status, Status::Error(_)), "{spec} should fail, got {status:?}");
+            assert!(
+                matches!(status, Status::Error(_)),
+                "{spec} should fail, got {status:?}"
+            );
         }
     }
 
@@ -310,11 +376,16 @@ mod tests {
 
     #[test]
     fn resolves_paths() {
-        let f: HashMap<String, String> =
-            ["main.ts", "a/b.ts", "a/c/index.ts"].iter().map(|k| (k.to_string(), String::new())).collect();
+        let f: HashMap<String, String> = ["main.ts", "a/b.ts", "a/c/index.ts"]
+            .iter()
+            .map(|k| (k.to_string(), String::new()))
+            .collect();
         assert_eq!(resolve_path(&f, "main.ts", "./a/b").unwrap(), "a/b.ts");
         assert_eq!(resolve_path(&f, "a/b.ts", "./c").unwrap(), "a/c/index.ts");
-        assert_eq!(resolve_path(&f, "a/c/index.ts", "../../main.ts").unwrap(), "main.ts");
+        assert_eq!(
+            resolve_path(&f, "a/c/index.ts", "../../main.ts").unwrap(),
+            "main.ts"
+        );
         assert!(resolve_path(&f, "main.ts", "../x").is_err());
         assert!(resolve_path(&f, "main.ts", "lodash").is_err());
     }

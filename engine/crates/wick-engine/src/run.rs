@@ -35,7 +35,13 @@ fn default_entry() -> String {
     "main.ts".into()
 }
 
-pub const PERMISSIONS: [&str; 5] = ["mouse.click", "mouse.move", "keyboard", "character.reset", "game.rejoin"];
+pub const PERMISSIONS: [&str; 5] = [
+    "mouse.click",
+    "mouse.move",
+    "keyboard",
+    "character.reset",
+    "game.rejoin",
+];
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RunEnd {
@@ -73,13 +79,23 @@ impl MacroRun {
         }
         for p in &spec.permissions {
             if !PERMISSIONS.contains(&p.as_str()) {
-                return Err(format!("Unknown permission \"{p}\" in wick.json. Use: {}.", PERMISSIONS.join(", ")));
+                return Err(format!(
+                    "Unknown permission \"{p}\" in wick.json. Use: {}.",
+                    PERMISSIONS.join(", ")
+                ));
             }
         }
         if !spec.files.contains_key(&spec.entry) {
-            return Err(format!("The macro's entry file \"{}\" is missing.", spec.entry));
+            return Err(format!(
+                "The macro's entry file \"{}\" is missing.",
+                spec.entry
+            ));
         }
-        let settings = if spec.settings.is_object() { spec.settings.clone() } else { json!({}) };
+        let settings = if spec.settings.is_object() {
+            spec.settings.clone()
+        } else {
+            json!({})
+        };
         let runtime = MacroRuntime::start(
             spec.files.clone(),
             &spec.entry,
@@ -114,7 +130,12 @@ impl MacroRun {
         Ok((rect.x + at.x * rect.w, rect.y + at.y * rect.h))
     }
 
-    fn handle(&mut self, cmd: Value, now: f64, emit: &mut dyn FnMut(&str, Value)) -> Result<(), String> {
+    fn handle(
+        &mut self,
+        cmd: Value,
+        now: f64,
+        emit: &mut dyn FnMut(&str, Value),
+    ) -> Result<(), String> {
         match cmd["t"].as_str().unwrap_or_default() {
             "track" => {
                 let region = cmd["region"].as_str().unwrap_or_default().to_string();
@@ -125,13 +146,14 @@ impl MacroRun {
                     tolerance: cmd["tolerance"].as_f64().unwrap_or(30.0).clamp(0.0, 255.0) as u8,
                     min_pixels: cmd["minPixels"].as_u64().unwrap_or(3) as usize,
                 };
-                self.trackers.push(Tracker::new(cmd["id"].as_u64().unwrap_or(0), region, query));
+                self.trackers
+                    .push(Tracker::new(cmd["id"].as_u64().unwrap_or(0), region, query));
             }
             "log" => emit("macro.log", json!({ "text": cmd["text"], "at": now })),
             "loop" => self.loops = cmd["index"].as_u64().unwrap_or(0) + 1,
             _ => {
-                let command: Command =
-                    serde_json::from_value(cmd.clone()).map_err(|e| format!("Bad input command {cmd}: {e}"))?;
+                let command: Command = serde_json::from_value(cmd.clone())
+                    .map_err(|e| format!("Bad input command {cmd}: {e}"))?;
                 let permission = command.permission();
                 if !self.permissions.contains(permission) {
                     return Err(format!(
@@ -139,10 +161,14 @@ impl MacroRun {
                     ));
                 }
                 let located = match &command {
-                    Command::Click { at: Some(at), .. } | Command::Move { at } => Some(self.locate(at)?),
+                    Command::Click { at: Some(at), .. } | Command::Move { at } => {
+                        Some(self.locate(at)?)
+                    }
                     _ => None,
                 };
-                self.input.schedule(command, now, |_| located.ok_or_else(|| "no position".to_string()))?;
+                self.input.schedule(command, now, |_| {
+                    located.ok_or_else(|| "no position".to_string())
+                })?;
             }
         }
         Ok(())
@@ -223,7 +249,11 @@ impl MacroRun {
             .iter()
             .map(|(name, r)| json!({ "name": name, "rect": r.resolve(self.viewport).normalized(frame_w, frame_h) }))
             .collect();
-        let trackers: Vec<Value> = self.trackers.iter().map(|t| t.overlay(frame_w, frame_h)).collect();
+        let trackers: Vec<Value> = self
+            .trackers
+            .iter()
+            .map(|t| t.overlay(frame_w, frame_h))
+            .collect();
         json!({ "regions": regions, "trackers": trackers })
     }
 }

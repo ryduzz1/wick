@@ -26,7 +26,10 @@ pub fn frontmost_window() -> Option<u64> {
 }
 
 pub fn permissions() -> Permissions {
-    Permissions { screen_recording: false, accessibility: false }
+    Permissions {
+        screen_recording: false,
+        accessibility: false,
+    }
 }
 
 pub fn request_permissions() {}
@@ -51,6 +54,9 @@ pub fn key(_code: u32, _down: bool) -> Result<(), String> {
     Err(UNSUPPORTED.into())
 }
 
-pub fn start_hotkey(_code: u32, _on_press: Box<dyn Fn() + Send + Sync + 'static>) -> Result<(), String> {
+pub fn start_hotkey(
+    _code: u32,
+    _on_press: Box<dyn Fn() + Send + Sync + 'static>,
+) -> Result<(), String> {
     Err(UNSUPPORTED.into())
 }

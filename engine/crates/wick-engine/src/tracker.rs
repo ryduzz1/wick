@@ -46,7 +46,12 @@ impl Tracker {
         };
         self.last_seen = Some(now);
         self.history.push_back((now, m.cx, m.cy));
-        while self.history.len() > 2 && self.history.front().is_some_and(|&(t, _, _)| now - t > VELOCITY_WINDOW_MS) {
+        while self.history.len() > 2
+            && self
+                .history
+                .front()
+                .is_some_and(|&(t, _, _)| now - t > VELOCITY_WINDOW_MS)
+        {
             self.history.pop_front();
         }
         self.velocity = slope(&self.history);
@@ -125,7 +130,11 @@ mod tests {
     #[test]
     fn estimates_velocity_from_motion() {
         let white = [255, 255, 255];
-        let query = ColorQuery { rgb: white, tolerance: 10, min_pixels: 1 };
+        let query = ColorQuery {
+            rgb: white,
+            tolerance: 10,
+            min_pixels: 1,
+        };
         let mut tracker = Tracker::new(1, "bar".into(), query);
         let region = Rect::new(0.0, 0.0, 100.0, 10.0);
         for i in 0..6 {
@@ -136,13 +145,20 @@ mod tests {
         }
         let state = tracker.state(50.0);
         assert_eq!(state["seen"], true);
-        assert!((state["vx"].as_f64().unwrap() - 1.0).abs() < 1e-6, "{state}");
+        assert!(
+            (state["vx"].as_f64().unwrap() - 1.0).abs() < 1e-6,
+            "{state}"
+        );
         assert!((state["x"].as_f64().unwrap() - 0.26).abs() < 1e-9);
     }
 
     #[test]
     fn reports_how_long_it_has_been_missing() {
-        let query = ColorQuery { rgb: [255, 0, 0], tolerance: 0, min_pixels: 1 };
+        let query = ColorQuery {
+            rgb: [255, 0, 0],
+            tolerance: 0,
+            min_pixels: 1,
+        };
         let mut tracker = Tracker::new(1, "r".into(), query);
         let region = Rect::new(0.0, 0.0, 10.0, 10.0);
         let mut seen = Frame::new(10, 10, [0, 0, 0]);

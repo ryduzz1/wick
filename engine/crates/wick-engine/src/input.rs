@@ -30,20 +30,42 @@ pub struct At {
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(tag = "t", rename_all = "camelCase")]
 pub enum Command {
-    Click { button: String, at: Option<At>, hold: f64 },
-    MouseDown { button: String },
-    MouseUp { button: String },
-    Move { at: At },
-    Turn { dx: f64, dy: f64 },
-    Press { key: String, hold: f64 },
-    KeyDown { key: String },
-    KeyUp { key: String },
+    Click {
+        button: String,
+        at: Option<At>,
+        hold: f64,
+    },
+    MouseDown {
+        button: String,
+    },
+    MouseUp {
+        button: String,
+    },
+    Move {
+        at: At,
+    },
+    Turn {
+        dx: f64,
+        dy: f64,
+    },
+    Press {
+        key: String,
+        hold: f64,
+    },
+    KeyDown {
+        key: String,
+    },
+    KeyUp {
+        key: String,
+    },
 }
 
 impl Command {
     pub fn permission(&self) -> &'static str {
         match self {
-            Command::Click { .. } | Command::MouseDown { .. } | Command::MouseUp { .. } => "mouse.click",
+            Command::Click { .. } | Command::MouseDown { .. } | Command::MouseUp { .. } => {
+                "mouse.click"
+            }
             Command::Move { .. } | Command::Turn { .. } => "mouse.move",
             Command::Press { .. } | Command::KeyDown { .. } | Command::KeyUp { .. } => "keyboard",
         }
@@ -51,12 +73,15 @@ impl Command {
 }
 
 fn button(name: &str) -> Result<MouseButton, String> {
-    MouseButton::parse(name).ok_or_else(|| format!("Unknown mouse button \"{name}\". Use left, right or middle."))
+    MouseButton::parse(name)
+        .ok_or_else(|| format!("Unknown mouse button \"{name}\". Use left, right or middle."))
 }
 
 fn key(name: &str) -> Result<String, String> {
     let name = name.to_ascii_lowercase();
-    if wick_platform::keys::mac_code(&name).is_none() && wick_platform::keys::windows_code(&name).is_none() {
+    if wick_platform::keys::mac_code(&name).is_none()
+        && wick_platform::keys::windows_code(&name).is_none()
+    {
         return Err(format!("Unknown key \"{name}\"."));
     }
     Ok(name)
@@ -84,17 +109,45 @@ impl InputState {
     ) -> Result<(), String> {
         let mut at = |t: f64, a: Action| self.scheduled.push((t, a));
         match cmd {
-            Command::Click { button: b, at: point, hold } => {
+            Command::Click {
+                button: b,
+                at: point,
+                hold,
+            } => {
                 let b = button(&b)?;
                 if let Some(point) = point {
                     let (x, y) = locate(&point)?;
                     at(now, Action::MoveTo { x, y });
                 }
-                at(now, Action::Button { button: b, down: true });
-                at(now + hold.max(0.0), Action::Button { button: b, down: false });
+                at(
+                    now,
+                    Action::Button {
+                        button: b,
+                        down: true,
+                    },
+                );
+                at(
+                    now + hold.max(0.0),
+                    Action::Button {
+                        button: b,
+                        down: false,
+                    },
+                );
             }
-            Command::MouseDown { button: b } => at(now, Action::Button { button: button(&b)?, down: true }),
-            Command::MouseUp { button: b } => at(now, Action::Button { button: button(&b)?, down: false }),
+            Command::MouseDown { button: b } => at(
+                now,
+                Action::Button {
+                    button: button(&b)?,
+                    down: true,
+                },
+            ),
+            Command::MouseUp { button: b } => at(
+                now,
+                Action::Button {
+                    button: button(&b)?,
+                    down: false,
+                },
+            ),
             Command::Move { at: point } => {
                 let (x, y) = locate(&point)?;
                 at(now, Action::MoveTo { x, y });
@@ -102,11 +155,35 @@ impl InputState {
             Command::Turn { dx, dy } => at(now, Action::Turn { dx, dy }),
             Command::Press { key: k, hold } => {
                 let k = key(&k)?;
-                at(now, Action::Key { name: k.clone(), down: true });
-                at(now + hold.max(0.0), Action::Key { name: k, down: false });
+                at(
+                    now,
+                    Action::Key {
+                        name: k.clone(),
+                        down: true,
+                    },
+                );
+                at(
+                    now + hold.max(0.0),
+                    Action::Key {
+                        name: k,
+                        down: false,
+                    },
+                );
             }
-            Command::KeyDown { key: k } => at(now, Action::Key { name: key(&k)?, down: true }),
-            Command::KeyUp { key: k } => at(now, Action::Key { name: key(&k)?, down: false }),
+            Command::KeyDown { key: k } => at(
+                now,
+                Action::Key {
+                    name: key(&k)?,
+                    down: true,
+                },
+            ),
+            Command::KeyUp { key: k } => at(
+                now,
+                Action::Key {
+                    name: key(&k)?,
+                    down: false,
+                },
+            ),
         }
         Ok(())
     }
@@ -132,7 +209,10 @@ impl InputState {
                 Action::Button { button, down: true } => {
                     self.held_buttons.insert(*button);
                 }
-                Action::Button { button, down: false } => {
+                Action::Button {
+                    button,
+                    down: false,
+                } => {
                     self.held_buttons.remove(button);
                 }
                 Action::Key { name, down: true } => {
@@ -148,7 +228,11 @@ impl InputState {
     }
 
     /// Releases anything still held, if the target is focused, and clears the schedule.
-    pub fn release_all(&mut self, focused: bool, send: &mut dyn FnMut(&Action) -> Result<(), String>) {
+    pub fn release_all(
+        &mut self,
+        focused: bool,
+        send: &mut dyn FnMut(&Action) -> Result<(), String>,
+    ) {
         self.scheduled.clear();
         let buttons: Vec<_> = self.held_buttons.drain().collect();
         let keys: Vec<_> = self.held_keys.drain().collect();
@@ -156,7 +240,10 @@ impl InputState {
             return;
         }
         for button in buttons {
-            let _ = send(&Action::Button { button, down: false });
+            let _ = send(&Action::Button {
+                button,
+                down: false,
+            });
         }
         for name in keys {
             let _ = send(&Action::Key { name, down: false });
@@ -186,22 +273,36 @@ mod tests {
     #[test]
     fn click_moves_presses_then_releases_later() {
         let mut s = InputState::default();
-        let cmd: Command =
-            serde_json::from_str(r#"{"t":"click","button":"left","at":{"region":"bar","x":0.5,"y":0.5},"hold":30}"#)
-                .unwrap();
+        let cmd: Command = serde_json::from_str(
+            r#"{"t":"click","button":"left","at":{"region":"bar","x":0.5,"y":0.5},"hold":30}"#,
+        )
+        .unwrap();
         s.schedule(cmd, 100.0, locate).unwrap();
         assert_eq!(
             collect(&mut s, 100.0, true),
-            vec![Action::MoveTo { x: 10.0, y: 20.0 }, Action::Button { button: MouseButton::Left, down: true }]
+            vec![
+                Action::MoveTo { x: 10.0, y: 20.0 },
+                Action::Button {
+                    button: MouseButton::Left,
+                    down: true
+                }
+            ]
         );
         assert!(collect(&mut s, 120.0, true).is_empty());
-        assert_eq!(collect(&mut s, 130.0, true), vec![Action::Button { button: MouseButton::Left, down: false }]);
+        assert_eq!(
+            collect(&mut s, 130.0, true),
+            vec![Action::Button {
+                button: MouseButton::Left,
+                down: false
+            }]
+        );
     }
 
     #[test]
     fn drops_input_while_unfocused() {
         let mut s = InputState::default();
-        s.schedule(Command::KeyDown { key: "W".into() }, 0.0, locate).unwrap();
+        s.schedule(Command::KeyDown { key: "W".into() }, 0.0, locate)
+            .unwrap();
         assert!(collect(&mut s, 0.0, false).is_empty());
         assert_eq!(s.dropped, 1);
     }
@@ -209,8 +310,16 @@ mod tests {
     #[test]
     fn releases_held_input() {
         let mut s = InputState::default();
-        s.schedule(Command::KeyDown { key: "w".into() }, 0.0, locate).unwrap();
-        s.schedule(Command::MouseDown { button: "right".into() }, 0.0, locate).unwrap();
+        s.schedule(Command::KeyDown { key: "w".into() }, 0.0, locate)
+            .unwrap();
+        s.schedule(
+            Command::MouseDown {
+                button: "right".into(),
+            },
+            0.0,
+            locate,
+        )
+        .unwrap();
         collect(&mut s, 0.0, true);
         let mut released = Vec::new();
         s.release_all(true, &mut |a| {
@@ -218,15 +327,45 @@ mod tests {
             Ok(())
         });
         assert_eq!(released.len(), 2);
-        assert!(released.contains(&Action::Key { name: "w".into(), down: false }));
+        assert!(released.contains(&Action::Key {
+            name: "w".into(),
+            down: false
+        }));
     }
 
     #[test]
     fn maps_permissions_and_rejects_unknown_names() {
-        assert_eq!(Command::Turn { dx: 1.0, dy: 0.0 }.permission(), "mouse.move");
-        assert_eq!(Command::Press { key: "e".into(), hold: 10.0 }.permission(), "keyboard");
+        assert_eq!(
+            Command::Turn { dx: 1.0, dy: 0.0 }.permission(),
+            "mouse.move"
+        );
+        assert_eq!(
+            Command::Press {
+                key: "e".into(),
+                hold: 10.0
+            }
+            .permission(),
+            "keyboard"
+        );
         let mut s = InputState::default();
-        assert!(s.schedule(Command::Press { key: "hyper".into(), hold: 1.0 }, 0.0, locate).is_err());
-        assert!(s.schedule(Command::MouseDown { button: "fourth".into() }, 0.0, locate).is_err());
+        assert!(s
+            .schedule(
+                Command::Press {
+                    key: "hyper".into(),
+                    hold: 1.0
+                },
+                0.0,
+                locate
+            )
+            .is_err());
+        assert!(s
+            .schedule(
+                Command::MouseDown {
+                    button: "fourth".into()
+                },
+                0.0,
+                locate
+            )
+            .is_err());
     }
 }

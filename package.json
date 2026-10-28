@@ -1,0 +1,23 @@
+{
+  "name": "wick",
+  "version": "0.1.0",
+  "description": "Screen-aware Roblox macros that react in real time, loop on their own, and can be written by AI agents.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "app/main.js",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build:engine": "node scripts/build-engine.mjs",
+    "start": "node scripts/build-engine.mjs && electron .",
+    "test": "node scripts/build-engine.mjs && node --no-warnings --test \"tests/*.test.js\"",
+    "test:engine": "cargo test --manifest-path engine/Cargo.toml",
+    "smoke:app": "node scripts/build-engine.mjs && node scripts/smoke-app.mjs",
+    "check": "node scripts/check.mjs"
+  },
+  "devDependencies": {
+    "electron": "44.10.0"
+  }
+}

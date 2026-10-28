@@ -4,52 +4,37 @@ Wick is built in passes. Each pass ends with working, tested code, a commit, and
 
 ## Done
 
-- Project setup: README, working agreement, and design docs for the architecture, the macro format and sharing, agent tools, and visual design. No code yet.
+- Project setup: README, working agreement, and design docs for the architecture, the macro format and sharing, agent tools, and visual design.
 - Scope decision: Roblox-first product on a target-based engine (see [targets](ARCHITECTURE.md#targets)).
+
+### Pass 1: Engine, runtime and first app window (planned passes 1–4)
+
+Built as one large pass:
+
+- **Engine (`engine/`):** a Rust workspace. `wick-platform` is the OS layer; `wick-engine` is a binary speaking newline-delimited JSON-RPC over stdio (`ping`, `version`, `permissions`, `targets.list`, `session.*`, `macro.run`, `macro.stop`, `killswitch`, `sim.run`, `shutdown`).
+- **Targets:** `roblox` and `testbench` (found by window owner, title or executable name, never a process handle), and `sim`, a deterministic bar-minigame simulation with adjustable drift, push, zone size, jumps, latency and seed.
+- **Capture:** ScreenCaptureKit on macOS and Windows Graphics Capture on Windows, at up to 120 fps, with the game area worked out per platform.
+- **Input:** clicks, holds, keys, absolute and relative mouse movement through CGEvent and SendInput, dropped unless the target is focused, and released when a run ends.
+- **Kill switch:** F8, registered by the engine (event tap on macOS, `RegisterHotKey` on Windows), with an app-level fallback.
+- **Vision:** anchored regions, the `color` detector, and trackers with position, extent, velocity and time missing.
+- **Macro runtime:** QuickJS with the first API (`screen.track`, `input`, `loop.hz`, `loop.repeat`, `wait`, `waitUntil`, `settings`, `log`), documented in [API.md](API.md). The sandbox has no globals beyond the API, imports limited to the macro's own files, memory and per-step time limits, and undeclared permissions stop the macro.
+- **App:** type stripping and `wick.json` validation; a window with the macro list, target picker, live view with region and tracker overlays, run controls, stats, a settings form, run log, simulator test, macOS permission onboarding and the kill-switch chip.
+- **Test bench:** the minigame as a page the app opens in its own window.
+- **Example:** `examples/bar-minigame/`, a hand-written macro.
+- **Tooling:** `npm start`, `test`, `test:engine`, `check`, `smoke:app`, and CI on macOS and Windows.
+
+**Verification:**
+
+- 36 Rust tests: simulation, regions, vision, trackers, input scheduling, the runtime and sandbox (no `fetch`, `require` or `process`; imports outside the macro rejected; runaway steps stopped), and full headless runs.
+- 14 Node tests: manifest and settings validation, type stripping, and end-to-end tests against the engine binary (live session previews, kill switch, `macro.stop`, error messages).
+- The example keeps the tick in the zone about 90% of the time on average across 20 sim seeds, worst game about 88%. That's short of the 95% target set for this pass; CI checks for at least 87% average and 82% worst. The misses come from the zone jumping away, which the macro can't predict.
+- `npm run check` (rustfmt, clippy with warnings as errors, syntax) is clean, and the Windows code type-checks with `cargo check --target x86_64-pc-windows-msvc`.
+- The app smoke test opens the window, runs the example on the simulator and draws the live view.
+- **Not yet tested by hand:** real capture and input on macOS (test bench and Roblox), and everything on Windows.
 
 ## Build plan
 
-### Pass 1: Skeleton
-
-Set up the two halves and the pipe between them.
-
-- `engine/`: Rust workspace with a `wick-engine` binary that speaks JSON-RPC over stdin/stdout (`ping`, `version`, `shutdown`).
-- `app/`: Electron app in plain JS that starts the engine, restarts it if it crashes, and shows an empty window styled per [DESIGN.md](DESIGN.md).
-- `package.json` scripts matching Fuse: `start`, `test`, `check`, `dist:dir`.
-- GitHub Actions on macOS and Windows: build the engine, run Rust and Node tests.
-
-**Checks:** CI green on both platforms. Manual: `npm start` opens the window and shows the engine version.
-
-### Pass 2: Targets, capture and the kill switch
-
-- The `Target` trait and three targets: `roblox`, `sim` (a deterministic bar-minigame simulation with adjustable drift, click push, zone size, jump interval and seed), and `testbench`.
-- `testbench/`: the same minigame as a standalone web page, for testing real capture and input end to end.
-- Window finding without process handles, focus detection, and viewport detection.
-- Window capture at 60+ fps on macOS (ScreenCaptureKit) and Windows (Windows Graphics Capture), with DPI and Retina scaling handled.
-- Engine-registered kill-switch hotkey.
-- macOS permission checks for Screen Recording and Accessibility, with an onboarding screen.
-
-**Checks:** Rust tests for the simulation and viewport math. Manual: the app finds the Roblox and test-bench windows, shows capture fps above 60, and the kill switch fires.
-
-### Pass 3: Vision
-
-- Regions with anchors, resolved against the viewport.
-- Detectors: `color` (masks, blobs, extents), `template` (normalized cross-correlation), `similar` (screen-to-image comparison), `visible`.
-- Trackers: position, velocity and last-seen time across frames.
-- A fixture set of PNG frames (sim renders plus real captures you provide) with expected results.
-
-**Checks:** detector tests against fixtures; benchmark for per-frame detector time on a typical region (target: under 1 ms). Manual: none yet.
-
-### Pass 4: Input and the macro runtime
-
-- Input on both platforms: clicks, keys, holds, absolute and relative mouse movement, dropped unless the target is focused.
-- Measured input latency, exposed as `input.latency`.
-- QuickJS runtime in the engine with the first API: `screen`, `input`, `loop`, `wait`, `settings`, `log`. Written up in `docs/API.md`.
-- The sandbox: no globals beyond the API, an in-memory module loader limited to the macro folder, undeclared permissions stop the macro.
-- Type stripping in the app; `wick.json` validation.
-- `examples/bar-minigame/`: a hand-written macro for the bar minigame.
-
-**Checks:** the example macro keeps the tick in the zone at least 95% of the time on the `sim` target across 20 seeds, headless, in CI. Sandbox tests: a macro that tries `fetch`, `require`, file access or an undeclared input is stopped. Manual: the example macro runs against the test-bench page.
+Left over from passes 1–4, to fold into the passes below: a `dist:dir` packaged build, `template` and `similar` detectors and a PNG fixture set, measured (rather than fixed) input latency on real windows, and a per-frame detector benchmark.
 
 ### Pass 5: App shell
 

@@ -39,9 +39,15 @@ fn target_list() -> Value {
         let entry = match id {
             "sim" => json!({ "id": id, "label": "Simulator", "found": true, "focused": true }),
             _ => {
-                let kind = if id == "roblox" { WindowKind::Roblox } else { WindowKind::Testbench };
+                let kind = if id == "roblox" {
+                    WindowKind::Roblox
+                } else {
+                    WindowKind::Testbench
+                };
                 let window = kind.find();
-                let focused = window.as_ref().is_some_and(|w| wick_platform::frontmost_window() == Some(w.id));
+                let focused = window
+                    .as_ref()
+                    .is_some_and(|w| wick_platform::frontmost_window() == Some(w.id));
                 json!({
                     "id": id,
                     "label": if id == "roblox" { "Roblox" } else { "Test bench" },
@@ -59,12 +65,15 @@ fn target_list() -> Value {
 impl Engine {
     fn kill(&self, source: &str) {
         self.kills.fetch_add(1, Ordering::SeqCst);
-        self.emitter.event("killswitch", json!({ "source": source }));
+        self.emitter
+            .event("killswitch", json!({ "source": source }));
     }
 
     fn with_session<T>(&self, f: impl FnOnce(&Session) -> Result<T, String>) -> Result<T, String> {
         let guard = self.session.lock().unwrap();
-        let session = guard.as_ref().ok_or("No session is running. Start one with session.start.")?;
+        let session = guard
+            .as_ref()
+            .ok_or("No session is running. Start one with session.start.")?;
         f(session)
     }
 
@@ -86,7 +95,12 @@ impl Engine {
                 let target: String = param(params, "target")?;
                 let mut guard = self.session.lock().unwrap();
                 *guard = None;
-                *guard = Some(Session::spawn(&target, scenario(params)?, self.emitter.clone(), self.kills.clone())?);
+                *guard = Some(Session::spawn(
+                    &target,
+                    scenario(params)?,
+                    self.emitter.clone(),
+                    self.kills.clone(),
+                )?);
                 Ok(json!({ "target": target }))
             }
             "session.stop" => {
@@ -145,8 +159,16 @@ fn main() {
     if let Err(e) = &hotkey {
         eprintln!("wick-engine: {e}");
     }
-    let engine = Arc::new(Engine { emitter: emitter.clone(), kills, hotkey, session: Mutex::new(None) });
-    emitter.event("ready", json!({ "version": env!("CARGO_PKG_VERSION"), "protocol": PROTOCOL }));
+    let engine = Arc::new(Engine {
+        emitter: emitter.clone(),
+        kills,
+        hotkey,
+        session: Mutex::new(None),
+    });
+    emitter.event(
+        "ready",
+        json!({ "version": env!("CARGO_PKG_VERSION"), "protocol": PROTOCOL }),
+    );
 
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
@@ -174,7 +196,10 @@ fn main() {
                 std::thread::spawn(move || {
                     let result = (|| {
                         let spec: MacroSpec = param(&params, "macro")?;
-                        let seconds = params["seconds"].as_f64().unwrap_or(30.0).clamp(0.1, 3600.0);
+                        let seconds = params["seconds"]
+                            .as_f64()
+                            .unwrap_or(30.0)
+                            .clamp(0.1, 3600.0);
                         run_headless(spec, scenario(&params)?.unwrap_or_default(), seconds)
                     })();
                     emitter.reply(&id, result);

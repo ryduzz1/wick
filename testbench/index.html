@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'">
+  <title>Wick Test Bench</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #181a1f; user-select: none; cursor: default; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    /* Kept dim and away from the bar so detectors never mistake it for the game. */
+    .hud { position: fixed; top: 10px; left: 12px; font: 12px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #8a8f98; }
+    .hud b { color: #b7bcc4; font-weight: 600; }
+    .hud .score { font: 600 13px/1.5 ui-monospace, monospace; color: #b7bcc4; }
+    .panel { position: fixed; top: 10px; right: 12px; display: flex; flex-direction: column; gap: 6px; font: 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #8a8f98; background: #20232a; border: 1px solid #2c3038; border-radius: 8px; padding: 10px 12px; }
+    .panel.hidden { display: none; }
+    .panel label { display: grid; grid-template-columns: 110px 110px 38px; align-items: center; gap: 6px; }
+    .panel output { font-family: ui-monospace, monospace; text-align: right; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div class="hud">
+    <div><b>Wick Test Bench</b> · click anywhere or press space to push the tick</div>
+    <div>In zone: <span class="score" id="score">—</span> · last 10s: <span class="score" id="recent">—</span></div>
+    <div>R resets · S shows settings</div>
+  </div>
+  <form class="panel hidden" id="panel"></form>
+  <script>
+    // Same game, geometry and colors as the engine's `sim` target (engine/crates/wick-engine/src/sim.rs).
+    const COLORS = { background: '#181a1f', track: '#2e3138', zone: '#3ccf5a', tick: '#ffffff' };
+    const BAR_Y = -0.18, BAR_W = 0.42, BAR_H = 0.034;
+    const DEFAULTS = { drift: 0.25, push: 0.035, pushMs: 60, zone: 0.125, jumpMs: 500, jumpRange: 0.10 };
+    const LIMITS = { drift: [0, 1, 0.01], push: [0.005, 0.2, 0.005], pushMs: [0, 300, 5], zone: [0.03, 0.5, 0.005], jumpMs: [100, 3000, 50], jumpRange: [0, 0.9, 0.01] };
+    const LABELS = { drift: 'Drift (bar/s)', push: 'Push per click', pushMs: 'Push time (ms)', zone: 'Zone width', jumpMs: 'Jump every (ms)', jumpRange: 'Jump range' };
+
+    const canvas = document.getElementById('game');
+    const g = canvas.getContext('2d');
+    const s = { ...DEFAULTS };
+    let game;
+
+    function reset() {
+      game = { t: 0, tick: 0.5, zone: 0.3 + 0.4 * Math.random(), nextJump: s.jumpMs / 1000, pushes: [], inZone: 0, history: [] };
+      game.zone = clampZone(game.zone);
+    }
+    const clampZone = (c) => Math.min(1 - s.zone / 2, Math.max(s.zone / 2, c));
+    const inside = () => Math.abs(game.tick - game.zone) <= s.zone / 2;
+
+    function push() { game.pushes.push(s.push); }
+
+    function step(dt) {
+      const rate = s.push / Math.max(1e-6, s.pushMs / 1000);
+      let forward = 0;
+      for (let i = 0; i < game.pushes.length; i++) {
+        const d = Math.min(rate * dt, game.pushes[i]);
+        game.pushes[i] -= d;
+        forward += d;
+      }
+      game.pushes = game.pushes.filter((r) => r > 1e-12);
+      game.tick = Math.min(1, Math.max(0, game.tick + forward - s.drift * dt));
+      if (game.t >= game.nextJump) {
+        game.zone = clampZone(game.zone + (Math.random() * 2 - 1) * s.jumpRange);
+        game.nextJump += s.jumpMs / 1000;
+      }
+      const hit = inside();
+      if (hit) game.inZone += dt;
+      game.history.push([game.t, dt, hit]);
+      while (game.history.length && game.t - game.history[0][0] > 10) game.history.shift();
+      game.t += dt;
+    }
+
+    function draw() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      g.fillStyle = COLORS.background;
+      g.fillRect(0, 0, w, h);
+      const tw = BAR_W * h, th = BAR_H * h;
+      const tx = w / 2 - tw / 2, ty = h + BAR_Y * h - th / 2;
+      g.fillStyle = COLORS.track;
+      g.fillRect(tx, ty, tw, th);
+      const zw = s.zone * tw;
+      g.fillStyle = COLORS.zone;
+      g.fillRect(tx + game.zone * tw - zw / 2, ty, zw, th);
+      const kw = Math.max(2, 0.004 * h), over = th * 0.2;
+      g.fillStyle = COLORS.tick;
+      g.fillRect(tx + game.tick * tw - kw / 2, ty - over, kw, th + 2 * over);
+    }
+
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      step(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    setInterval(() => {
+      document.getElementById('score').textContent = game.t > 0 ? `${(100 * game.inZone / game.t).toFixed(1)}%` : '—';
+      const span = game.history.reduce((a, [, dt]) => a + dt, 0);
+      const hit = game.history.reduce((a, [, dt, h]) => a + (h ? dt : 0), 0);
+      document.getElementById('recent').textContent = span > 0 ? `${(100 * hit / span).toFixed(1)}%` : '—';
+    }, 250);
+
+    const panel = document.getElementById('panel');
+    for (const key of Object.keys(DEFAULTS)) {
+      const [min, max, stepSize] = LIMITS[key];
+      const label = document.createElement('label');
+      const input = Object.assign(document.createElement('input'), { type: 'range', min, max, step: stepSize, value: s[key], name: key });
+      const out = document.createElement('output');
+      out.textContent = s[key];
+      input.oninput = () => { s[key] = Number(input.value); out.textContent = input.value; };
+      label.append(LABELS[key], input, out);
+      panel.append(label);
+    }
+    panel.addEventListener('mousedown', (e) => e.stopPropagation());
+
+    addEventListener('mousedown', (e) => { if (e.button === 0) push(); });
+    addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      if (e.code === 'Space') push();
+      else if (e.code === 'KeyR') reset();
+      else if (e.code === 'KeyS') panel.classList.toggle('hidden');
+    });
+
+    reset();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

@@ -53,7 +53,11 @@ pub fn find_color(frame: &Frame, region: Rect, q: &ColorQuery) -> Option<ColorMa
         let row = &frame.data[y * frame.stride..];
         for x in x0..x1 {
             let i = x * 4;
-            let (b, g, r) = (i16::from(row[i]), i16::from(row[i + 1]), i16::from(row[i + 2]));
+            let (b, g, r) = (
+                i16::from(row[i]),
+                i16::from(row[i + 1]),
+                i16::from(row[i + 2]),
+            );
             if (r - tr).abs() <= tol && (g - tg).abs() <= tol && (b - tb).abs() <= tol {
                 count += 1;
                 sx += x as f64;
@@ -90,7 +94,11 @@ mod tests {
     const GREEN: [u8; 3] = [0x3c, 0xcf, 0x5a];
 
     fn query(rgb: [u8; 3]) -> ColorQuery {
-        ColorQuery { rgb, tolerance: 20, min_pixels: 3 }
+        ColorQuery {
+            rgb,
+            tolerance: 20,
+            min_pixels: 3,
+        }
     }
 
     #[test]
@@ -127,11 +135,30 @@ mod tests {
     #[test]
     fn respects_tolerance_and_minimum() {
         let mut f = Frame::new(50, 50, [0, 0, 0]);
-        f.fill(Rect::new(0.0, 0.0, 10.0, 10.0), [0x3c + 15, 0xcf - 15, 0x5a]);
+        f.fill(
+            Rect::new(0.0, 0.0, 10.0, 10.0),
+            [0x3c + 15, 0xcf - 15, 0x5a],
+        );
         let region = Rect::new(0.0, 0.0, 50.0, 50.0);
         assert!(find_color(&f, region, &query(GREEN)).is_some());
-        assert!(find_color(&f, region, &ColorQuery { tolerance: 10, ..query(GREEN) }).is_none());
-        assert!(find_color(&f, region, &ColorQuery { min_pixels: 101, ..query(GREEN) }).is_none());
+        assert!(find_color(
+            &f,
+            region,
+            &ColorQuery {
+                tolerance: 10,
+                ..query(GREEN)
+            }
+        )
+        .is_none());
+        assert!(find_color(
+            &f,
+            region,
+            &ColorQuery {
+                min_pixels: 101,
+                ..query(GREEN)
+            }
+        )
+        .is_none());
     }
 
     #[test]

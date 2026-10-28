@@ -1,6 +1,6 @@
 # Macro format and sharing
 
-> Proposed format, version 1. Nothing here is built yet.
+> Format version 1. Folders, `wick.json`, `regions.json`, the entry file, settings and permissions work today; templates, `start.png`, `.wick` packages, installing and calibration are planned. See the [roadmap](ROADMAP.md).
 
 A macro is a folder. Everything needed to run it is inside, and everything personal to one user (calibration, settings, recordings) lives outside it. That split is what makes a macro shareable: you can zip the folder, send it, and the other person's copy behaves the same once calibrated to their screen.
 
@@ -35,6 +35,8 @@ bar-minigame/
 }
 ```
 
+Setting types are `number`, `integer`, `boolean` and `string`. Numbers are clamped to `min` and `max`.
+
 - `target` is the window the macro controls: `roblox` for real macros, `sim` or `testbench` while developing. See [targets](ARCHITECTURE.md#targets). The macro can't send input anywhere else.
 - `id` is `author/name`. Updates match on `id`; a new `version` replaces the code and keeps the user's settings and calibration.
 - `game.placeId` lets Wick warn you when you run a macro in a different game. It never blocks.
@@ -51,7 +53,7 @@ Regions are stored relative to the Roblox viewport, not in pixels, so they survi
 }
 ```
 
-`x`, `y`, `w` and `h` are fractions of the viewport height, so a region keeps its shape on wide and narrow windows.
+`x` and `y` place the region's center relative to its anchor, and `w` and `h` give its size. All four are fractions of the viewport height, so a region keeps its shape on wide and narrow windows.
 
 ## `main.ts`
 
@@ -73,7 +75,7 @@ export default macro({
 });
 ```
 
-Bigger macros are state machines: each state has a check, a timeout and a recovery step, and `ctx.loop.repeat(n)` runs the whole thing n times or forever. The API reference will live in `docs/API.md` once the engine exists.
+Bigger macros are state machines: each state has a check, a timeout and a recovery step, and `ctx.loop.repeat(n)` runs the whole thing n times or forever. The full API is in [API.md](API.md).
 
 ## Sharing
 

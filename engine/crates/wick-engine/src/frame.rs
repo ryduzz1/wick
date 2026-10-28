@@ -30,7 +30,12 @@ impl Rect {
     /// This rectangle as fractions of a `width` × `height` frame.
     pub fn normalized(&self, width: usize, height: usize) -> Rect {
         let (w, h) = (width.max(1) as f64, height.max(1) as f64);
-        Rect { x: self.x / w, y: self.y / h, w: self.w / w, h: self.h / h }
+        Rect {
+            x: self.x / w,
+            y: self.y / h,
+            w: self.w / w,
+            h: self.h / h,
+        }
     }
 }
 
@@ -45,7 +50,12 @@ pub struct Frame {
 
 impl Frame {
     pub fn new(width: usize, height: usize, rgb: [u8; 3]) -> Self {
-        let mut frame = Frame { width, height, stride: width * 4, data: vec![0; width * height * 4] };
+        let mut frame = Frame {
+            width,
+            height,
+            stride: width * 4,
+            data: vec![0; width * height * 4],
+        };
         frame.fill(Rect::new(0.0, 0.0, width as f64, height as f64), rgb);
         frame
     }
@@ -57,7 +67,12 @@ impl Frame {
         for y in 0..height {
             out.extend_from_slice(&data[y * stride..y * stride + row]);
         }
-        Frame { width, height, stride: row, data: out }
+        Frame {
+            width,
+            height,
+            stride: row,
+            data: out,
+        }
     }
 
     #[inline]
@@ -71,8 +86,8 @@ impl Frame {
         let px = [rgb[2], rgb[1], rgb[0], 255];
         for y in y0..y1 {
             let row = &mut self.data[y * self.stride + x0 * 4..y * self.stride + x1 * 4];
-            for chunk in row.chunks_exact_mut(4) {
-                chunk.copy_from_slice(&px);
+            for chunk in row.as_chunks_mut::<4>().0 {
+                *chunk = px;
             }
         }
     }
@@ -94,7 +109,11 @@ impl Frame {
     /// Encodes the frame as a PNG file.
     pub fn write_png(&self, path: &std::path::Path) -> Result<(), String> {
         let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
-        let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), self.width as u32, self.height as u32);
+        let mut encoder = png::Encoder::new(
+            std::io::BufWriter::new(file),
+            self.width as u32,
+            self.height as u32,
+        );
         encoder.set_color(png::ColorType::Rgb);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder.write_header().map_err(|e| e.to_string())?;

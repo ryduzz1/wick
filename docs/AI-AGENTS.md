@@ -1,6 +1,6 @@
 # Building with AI agents
 
-> Proposed design. Nothing here is built yet.
+> Proposed design. Not built yet: the agent tools are planned for pass 6 in the [roadmap](ROADMAP.md). The macro API they build on is in [API.md](API.md).
 
 Agents author Wick macros; they don't play the game. A model takes seconds per step, which is too slow for a minigame that needs a decision every 10 ms. So the agent observes, experiments, writes a macro, tests it and iterates, and the finished macro runs at full speed on its own.
 

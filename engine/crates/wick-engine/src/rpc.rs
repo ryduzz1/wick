@@ -7,9 +7,11 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
+type Sink = Box<dyn FnMut(Value) + Send>;
+
 /// Sends replies and events. Cloneable and usable from any thread.
 #[derive(Clone)]
-pub struct Emitter(Arc<Mutex<Box<dyn FnMut(Value) + Send>>>);
+pub struct Emitter(Arc<Mutex<Sink>>);
 
 impl Emitter {
     pub fn stdout() -> Self {

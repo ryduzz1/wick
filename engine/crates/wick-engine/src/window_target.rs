@@ -145,7 +145,10 @@ impl WindowTarget {
         if fw == 0 || fh == 0 {
             return None;
         }
-        Some((w.bounds.x + x * w.bounds.w / fw as f64, w.bounds.y + y * w.bounds.h / fh as f64))
+        Some((
+            w.bounds.x + x * w.bounds.w / fw as f64,
+            w.bounds.y + y * w.bounds.h / fh as f64,
+        ))
     }
 }
 
@@ -161,7 +164,11 @@ impl Target for WindowTarget {
             return None;
         }
         let slot = self.shared.slot.lock().unwrap();
-        let (slot, _) = self.shared.arrived.wait_timeout_while(slot, wait, |s| s.seq <= self.last_seq).unwrap();
+        let (slot, _) = self
+            .shared
+            .arrived
+            .wait_timeout_while(slot, wait, |s| s.seq <= self.last_seq)
+            .unwrap();
         if slot.seq <= self.last_seq {
             return None;
         }
@@ -181,7 +188,12 @@ impl Target for WindowTarget {
         };
         let sx = fw as f64 / w.bounds.w.max(1.0);
         let sy = fh as f64 / w.bounds.h.max(1.0);
-        Rect::new((w.client.x - w.bounds.x) * sx, (w.client.y - w.bounds.y) * sy, w.client.w * sx, w.client.h * sy)
+        Rect::new(
+            (w.client.x - w.bounds.x) * sx,
+            (w.client.y - w.bounds.y) * sy,
+            w.client.w * sx,
+            w.client.h * sy,
+        )
     }
 
     fn focused(&mut self) -> bool {
@@ -203,7 +215,9 @@ impl Target for WindowTarget {
     fn send(&mut self, action: &Action) -> Result<(), String> {
         match action {
             Action::MoveTo { x, y } => {
-                let (sx, sy) = self.to_screen(*x, *y).ok_or("The window isn't being captured yet")?;
+                let (sx, sy) = self
+                    .to_screen(*x, *y)
+                    .ok_or("The window isn't being captured yet")?;
                 wick_platform::mouse_move(sx, sy)
             }
             Action::Turn { dx, dy } => wick_platform::mouse_move_relative(*dx, *dy),

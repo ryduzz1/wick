@@ -139,7 +139,9 @@ mod tests {
 
     #[test]
     fn maps_common_keys_on_both_platforms() {
-        for name in ["a", "z", "0", "9", "space", "enter", "escape", "f1", "f8", "f12", "up", "shift"] {
+        for name in [
+            "a", "z", "0", "9", "space", "enter", "escape", "f1", "f8", "f12", "up", "shift",
+        ] {
             assert!(mac_code(name).is_some(), "mac {name}");
             assert!(windows_code(name).is_some(), "windows {name}");
         }

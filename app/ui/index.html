@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Wick</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="window-space"></div>
+    <div class="brand"><span class="mark">W<i class="flame"></i></span><span>Wick</span><span class="version" id="appVersion"></span></div>
+    <button id="openMacro" class="sidebar-action"><span data-icon="plus"></span>Open macro folder<span class="shortcut" id="openShortcut">⌘ O</span></button>
+    <div class="sidebar-label">Macros</div>
+    <div id="macroList" class="macro-list"></div>
+    <div class="sidebar-bottom">
+      <div id="engineStatus" class="engine-status">
+        <span id="engineDot" class="dot"></span>
+        <span><b id="engineLabel">Starting engine…</b><small id="engineSub"></small></span>
+      </div>
+    </div>
+  </aside>
+
+  <div class="workspace">
+    <header class="topbar">
+      <div class="breadcrumb"><span data-icon="bolt"></span><span id="crumbMacro">Wick</span><span class="slash">/</span><span id="crumbTarget">No target</span></div>
+      <div class="topbar-actions">
+        <button id="openBench" class="quiet small-button"><span data-icon="monitor"></span>Open test bench</button>
+        <button id="killChip" class="kill-chip" title="Stops every macro. Works from any app."><kbd>F8</kbd>Stop all</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="permissionNotice" class="notice hidden">
+        <h3>Wick needs two macOS permissions</h3>
+        <p id="permissionText"></p>
+        <div class="actions">
+          <button id="grantPermissions" class="primary small-button">Ask macOS</button>
+          <button id="openScreenSettings" class="small-button">Screen Recording settings</button>
+          <button id="openAxSettings" class="small-button">Accessibility settings</button>
+        </div>
+        <p class="fine-print">After you allow them, quit and reopen Wick so macOS applies the change.</p>
+      </section>
+
+      <section id="emptyView" class="welcome hidden">
+        <span class="mark large">W<i class="flame"></i></span>
+        <h1>No macros yet</h1>
+        <p>Open a folder that contains a <code>wick.json</code>.</p>
+      </section>
+
+      <section id="macroView" class="view hidden">
+        <div class="page-heading">
+          <div>
+            <h1 id="macroName"></h1>
+            <p id="macroDescription"></p>
+          </div>
+          <div class="segmented" id="targetPicker" role="radiogroup" aria-label="Target"></div>
+        </div>
+
+        <div class="run-bar">
+          <button id="runButton" class="ember"><span data-icon="play"></span>Run</button>
+          <button id="stopButton" class="hidden"><span data-icon="stop"></span>Stop</button>
+          <div class="run-state" role="status"><span id="stateDot" class="dot"></span><span id="stateLabel">Ready</span></div>
+          <span class="spacer"></span>
+          <button id="simulateButton" class="quiet small-button" title="Run on the simulator as fast as possible, over 5 different games"><span data-icon="flask"></span>Test on simulator</button>
+          <button id="showFolder" class="quiet small-button"><span data-icon="folder"></span>Show folder</button>
+        </div>
+
+        <div class="live">
+          <div class="live-frame">
+            <canvas id="liveCanvas" width="960" height="540"></canvas>
+            <div id="liveEmpty" class="live-empty"><span data-icon="monitor"></span><b id="liveEmptyTitle">Nothing to show yet</b><span id="liveEmptyText"></span></div>
+            <div class="layer-toggles">
+              <label><input type="checkbox" id="showRegions" checked>Regions</label>
+              <label><input type="checkbox" id="showTrackers" checked>Trackers</label>
+            </div>
+          </div>
+          <div class="frame-bar"><span id="fpsText">— fps</span><span id="tickText">— ms/tick</span><span id="latencyText">— ms latency</span><span id="windowText"></span></div>
+        </div>
+
+        <div class="tiles">
+          <div class="tile"><b id="tileElapsed">—</b><span>Running for</span></div>
+          <div class="tile"><b id="tileInputs">—</b><span>Inputs sent</span></div>
+          <div class="tile"><b id="tileDropped">—</b><span>Dropped (not focused)</span></div>
+          <div class="tile"><b id="tileScore">—</b><span id="tileScoreLabel">In zone (simulator)</span></div>
+        </div>
+
+        <section id="simResults" class="card hidden">
+          <div class="section-title"><h2>Simulator test</h2><span id="simSummary" class="count-pill"></span></div>
+          <div id="simRows" class="sim-rows"></div>
+        </section>
+
+        <div class="columns">
+          <section class="card">
+            <div class="section-title"><h2>Settings</h2></div>
+            <form id="settingsForm" class="settings-form"></form>
+            <p id="noSettings" class="muted hidden">This macro has no settings.</p>
+          </section>
+          <section class="card">
+            <div class="section-title"><h2>Log</h2><button id="clearLog" class="quiet small-button">Clear</button></div>
+            <ol id="runLog" class="run-log"></ol>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

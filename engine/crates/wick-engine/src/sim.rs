@@ -126,7 +126,8 @@ impl BarGame {
 
     pub fn click(&mut self) {
         self.clicks += 1;
-        self.pending.push(self.t + self.scenario.latency_ms / 1000.0);
+        self.pending
+            .push(self.t + self.scenario.latency_ms / 1000.0);
     }
 
     pub fn inside(&self) -> bool {
@@ -181,14 +182,35 @@ impl BarGame {
     pub fn render(&self, frame: &mut Frame) {
         let track = Self::track_rect(frame.width, frame.height);
         let pad = track.h;
-        frame.fill(Rect::new(track.x - pad, track.y - pad, track.w + 2.0 * pad, track.h + 2.0 * pad), BACKGROUND);
+        frame.fill(
+            Rect::new(
+                track.x - pad,
+                track.y - pad,
+                track.w + 2.0 * pad,
+                track.h + 2.0 * pad,
+            ),
+            BACKGROUND,
+        );
         frame.fill(track, TRACK);
         let zw = self.scenario.zone * track.w;
-        frame.fill(Rect::new(track.x + self.zone * track.w - zw / 2.0, track.y, zw, track.h), ZONE);
+        frame.fill(
+            Rect::new(
+                track.x + self.zone * track.w - zw / 2.0,
+                track.y,
+                zw,
+                track.h,
+            ),
+            ZONE,
+        );
         let tw = (0.004 * frame.height as f64).max(2.0);
         let overhang = track.h * 0.2;
         frame.fill(
-            Rect::new(track.x + self.tick * track.w - tw / 2.0, track.y - overhang, tw, track.h + 2.0 * overhang),
+            Rect::new(
+                track.x + self.tick * track.w - tw / 2.0,
+                track.y - overhang,
+                tw,
+                track.h + 2.0 * overhang,
+            ),
             TICK,
         );
     }
@@ -204,7 +226,12 @@ pub struct SimTarget {
 impl SimTarget {
     pub fn new(scenario: Scenario, realtime: bool) -> Self {
         let frame = Frame::new(scenario.width, scenario.height, BACKGROUND);
-        SimTarget { game: BarGame::new(scenario), frame, realtime, started: Instant::now() }
+        SimTarget {
+            game: BarGame::new(scenario),
+            frame,
+            realtime,
+            started: Instant::now(),
+        }
     }
 }
 
@@ -244,7 +271,10 @@ impl Target for SimTarget {
 
     fn send(&mut self, action: &Action) -> Result<(), String> {
         match action {
-            Action::Button { button: wick_platform::MouseButton::Left, down: true } => self.game.click(),
+            Action::Button {
+                button: wick_platform::MouseButton::Left,
+                down: true,
+            } => self.game.click(),
             Action::Key { name, down: true } if name == "space" => self.game.click(),
             _ => {}
         }
@@ -271,7 +301,10 @@ mod tests {
     #[test]
     fn same_seed_same_game() {
         let run = |seed| {
-            let mut g = BarGame::new(Scenario { seed, ..Scenario::default() });
+            let mut g = BarGame::new(Scenario {
+                seed,
+                ..Scenario::default()
+            });
             for i in 0..600 {
                 if i % 7 == 0 {
                     g.click();
@@ -295,7 +328,10 @@ mod tests {
 
     #[test]
     fn a_click_pushes_after_latency() {
-        let mut g = BarGame::new(Scenario { drift: 0.0, ..Scenario::default() });
+        let mut g = BarGame::new(Scenario {
+            drift: 0.0,
+            ..Scenario::default()
+        });
         g.click();
         for _ in 0..3 {
             g.step(1.0 / 120.0);
@@ -309,7 +345,10 @@ mod tests {
 
     #[test]
     fn zone_stays_on_the_bar() {
-        let mut g = BarGame::new(Scenario { jump_range: 0.9, ..Scenario::default() });
+        let mut g = BarGame::new(Scenario {
+            jump_range: 0.9,
+            ..Scenario::default()
+        });
         for _ in 0..12_000 {
             g.step(1.0 / 120.0);
             assert!(g.zone >= 0.0625 - 1e-9 && g.zone <= 0.9375 + 1e-9);

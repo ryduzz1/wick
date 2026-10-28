@@ -135,7 +135,10 @@ pub fn key(name: &str, down: bool) -> Result<(), String> {
 }
 
 /// Calls `on_press` whenever the named key is pressed, system-wide.
-pub fn start_hotkey(name: &str, on_press: Box<dyn Fn() + Send + Sync + 'static>) -> Result<(), String> {
+pub fn start_hotkey(
+    name: &str,
+    on_press: Box<dyn Fn() + Send + Sync + 'static>,
+) -> Result<(), String> {
     let code = imp::key_code(name).ok_or_else(|| format!("unknown key \"{name}\""))?;
     imp::start_hotkey(code, on_press)
 }

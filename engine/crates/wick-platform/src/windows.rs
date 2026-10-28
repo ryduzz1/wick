@@ -7,35 +7,45 @@ use std::sync::{Arc, Mutex};
 
 use windows::core::{Interface, BOOL};
 use windows::Foundation::TypedEventHandler;
-use windows::Graphics::Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem, GraphicsCaptureSession};
+use windows::Graphics::Capture::{
+    Direct3D11CaptureFramePool, GraphicsCaptureItem, GraphicsCaptureSession,
+};
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Graphics::DirectX::DirectXPixelFormat;
 use windows::Win32::Foundation::{CloseHandle, HMODULE, HWND, LPARAM, POINT, RECT};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
 use windows::Win32::Graphics::Direct3D11::{
-    D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D, D3D11_BIND_FLAG, D3D11_CPU_ACCESS_READ,
-    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAPPED_SUBRESOURCE, D3D11_MAP_READ, D3D11_RESOURCE_MISC_FLAG,
-    D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
+    D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D, D3D11_BIND_FLAG,
+    D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAPPED_SUBRESOURCE,
+    D3D11_MAP_READ, D3D11_RESOURCE_MISC_FLAG, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
+    D3D11_USAGE_STAGING,
 };
-use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS};
+use windows::Win32::Graphics::Dwm::{
+    DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS,
+};
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
-use windows::Win32::System::WinRT::Direct3D11::{CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess};
+use windows::Win32::System::WinRT::Direct3D11::{
+    CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
+};
 use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
 use windows::Win32::System::WinRT::{RoInitialize, RO_INIT_MULTITHREADED};
-use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
+use windows::Win32::UI::HiDpi::{
+    SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    MapVirtualKeyW, RegisterHotKey, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
-    KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MAPVK_VK_TO_VSC, MOD_NOREPEAT,
-    MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE,
-    MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
+    MapVirtualKeyW, RegisterHotKey, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE,
+    KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE,
+    MAPVK_VK_TO_VSC, MOD_NOREPEAT, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+    MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
+    MOUSEEVENTF_RIGHTUP, MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClientRect, GetForegroundWindow, GetMessageW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, SetCursorPos, MSG, WM_HOTKEY,
+    EnumWindows, GetClientRect, GetForegroundWindow, GetMessageW, GetWindowTextW,
+    GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetCursorPos, MSG, WM_HOTKEY,
 };
 
 use crate::{Bounds, FrameSink, MouseButton, Permissions, WindowInfo};
@@ -57,7 +67,12 @@ fn hwnd(id: u64) -> HWND {
 }
 
 fn rect_bounds(r: RECT) -> Bounds {
-    Bounds { x: r.left as f64, y: r.top as f64, w: (r.right - r.left) as f64, h: (r.bottom - r.top) as f64 }
+    Bounds {
+        x: r.left as f64,
+        y: r.top as f64,
+        w: (r.right - r.left) as f64,
+        h: (r.bottom - r.top) as f64,
+    }
 }
 
 fn process_names() -> std::collections::HashMap<u32, String> {
@@ -66,11 +81,21 @@ fn process_names() -> std::collections::HashMap<u32, String> {
         let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
             return names;
         };
-        let mut entry = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
         if Process32FirstW(snapshot, &mut entry).is_ok() {
             loop {
-                let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
-                names.insert(entry.th32ProcessID, String::from_utf16_lossy(&entry.szExeFile[..len]));
+                let len = entry
+                    .szExeFile
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(entry.szExeFile.len());
+                names.insert(
+                    entry.th32ProcessID,
+                    String::from_utf16_lossy(&entry.szExeFile[..len]),
+                );
                 if Process32NextW(snapshot, &mut entry).is_err() {
                     break;
                 }
@@ -138,10 +163,16 @@ fn window_info(window: HWND, names: &std::collections::HashMap<u32, String>) -> 
 pub fn list_windows() -> Vec<WindowInfo> {
     let mut handles: Vec<HWND> = Vec::new();
     unsafe {
-        let _ = EnumWindows(Some(collect_window), LPARAM(&mut handles as *mut Vec<HWND> as isize));
+        let _ = EnumWindows(
+            Some(collect_window),
+            LPARAM(&mut handles as *mut Vec<HWND> as isize),
+        );
     }
     let names = process_names();
-    handles.into_iter().filter_map(|h| window_info(h, &names)).collect()
+    handles
+        .into_iter()
+        .filter_map(|h| window_info(h, &names))
+        .collect()
 }
 
 pub fn frontmost_window() -> Option<u64> {
@@ -150,7 +181,10 @@ pub fn frontmost_window() -> Option<u64> {
 }
 
 pub fn permissions() -> Permissions {
-    Permissions { screen_recording: true, accessibility: true }
+    Permissions {
+        screen_recording: true,
+        accessibility: true,
+    }
 }
 
 pub fn request_permissions() {}
@@ -181,7 +215,9 @@ impl Capture {
     pub fn start(window: &WindowInfo, _fps: u32, sink: FrameSink) -> Result<Capture, String> {
         unsafe {
             let _ = RoInitialize(RO_INIT_MULTITHREADED);
-            let interop = windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>().map_err(hr)?;
+            let interop =
+                windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()
+                    .map_err(hr)?;
             let item: GraphicsCaptureItem = interop.CreateForWindow(hwnd(window.id)).map_err(hr)?;
 
             let mut device = None;
@@ -201,7 +237,10 @@ impl Capture {
             let device = device.ok_or("No Direct3D device")?;
             let context = context.ok_or("No Direct3D context")?;
             let dxgi: IDXGIDevice = device.cast().map_err(hr)?;
-            let d3d: IDirect3DDevice = CreateDirect3D11DeviceFromDXGIDevice(&dxgi).map_err(hr)?.cast().map_err(hr)?;
+            let d3d: IDirect3DDevice = CreateDirect3D11DeviceFromDXGIDevice(&dxgi)
+                .map_err(hr)?
+                .cast()
+                .map_err(hr)?;
 
             let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
                 &d3d,
@@ -215,15 +254,23 @@ impl Capture {
             let _ = session.SetIsBorderRequired(false);
             let _ = session.SetIsCursorCaptureEnabled(false);
 
-            let gpu = Arc::new(Mutex::new(Gpu { device, context, staging: None }));
-            pool.FrameArrived(&TypedEventHandler::new(move |pool: windows::core::Ref<Direct3D11CaptureFramePool>, _| {
-                let Some(pool) = pool.as_ref() else { return Ok(()) };
-                let frame = pool.TryGetNextFrame()?;
-                let access: IDirect3DDxgiInterfaceAccess = frame.Surface()?.cast()?;
-                let texture: ID3D11Texture2D = access.GetInterface()?;
-                let mut gpu = gpu.lock().unwrap();
-                deliver(&mut gpu, &texture, &sink)
-            }))
+            let gpu = Arc::new(Mutex::new(Gpu {
+                device,
+                context,
+                staging: None,
+            }));
+            pool.FrameArrived(&TypedEventHandler::new(
+                move |pool: windows::core::Ref<Direct3D11CaptureFramePool>, _| {
+                    let Some(pool) = pool.as_ref() else {
+                        return Ok(());
+                    };
+                    let frame = pool.TryGetNextFrame()?;
+                    let access: IDirect3DDxgiInterfaceAccess = frame.Surface()?.cast()?;
+                    let texture: ID3D11Texture2D = access.GetInterface()?;
+                    let mut gpu = gpu.lock().unwrap();
+                    deliver(&mut gpu, &texture, &sink)
+                },
+            ))
             .map_err(hr)?;
             session.StartCapture().map_err(hr)?;
             Ok(Capture { session, pool })
@@ -231,7 +278,11 @@ impl Capture {
     }
 }
 
-unsafe fn deliver(gpu: &mut Gpu, texture: &ID3D11Texture2D, sink: &FrameSink) -> windows::core::Result<()> {
+unsafe fn deliver(
+    gpu: &mut Gpu,
+    texture: &ID3D11Texture2D,
+    sink: &FrameSink,
+) -> windows::core::Result<()> {
     let mut desc = D3D11_TEXTURE2D_DESC::default();
     unsafe { texture.GetDesc(&mut desc) };
     let (width, height) = (desc.Width, desc.Height);
@@ -245,14 +296,20 @@ unsafe fn deliver(gpu: &mut Gpu, texture: &ID3D11Texture2D, sink: &FrameSink) ->
             ..desc
         };
         let mut staging = None;
-        unsafe { gpu.device.CreateTexture2D(&staging_desc, None, Some(&mut staging))? };
+        unsafe {
+            gpu.device
+                .CreateTexture2D(&staging_desc, None, Some(&mut staging))?
+        };
         gpu.staging = staging.map(|t| (t, width, height));
     }
-    let Some((staging, _, _)) = &gpu.staging else { return Ok(()) };
+    let Some((staging, _, _)) = &gpu.staging else {
+        return Ok(());
+    };
     unsafe {
         gpu.context.CopyResource(staging, texture);
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-        gpu.context.Map(staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))?;
+        gpu.context
+            .Map(staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))?;
         let stride = mapped.RowPitch as usize;
         let bytes = std::slice::from_raw_parts(mapped.pData as *const u8, stride * height as usize);
         sink(bytes, width as usize, height as usize, stride);
@@ -282,7 +339,16 @@ fn send(inputs: &[INPUT]) -> Result<(), String> {
 fn mouse_input(flags: MOUSE_EVENT_FLAGS, dx: i32, dy: i32) -> INPUT {
     INPUT {
         r#type: INPUT_MOUSE,
-        Anonymous: INPUT_0 { mi: MOUSEINPUT { dx, dy, mouseData: 0, dwFlags: flags, time: 0, dwExtraInfo: 0 } },
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx,
+                dy,
+                mouseData: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
     }
 }
 
@@ -291,7 +357,11 @@ pub fn mouse_move(x: f64, y: f64) -> Result<(), String> {
 }
 
 pub fn mouse_move_relative(dx: f64, dy: f64) -> Result<(), String> {
-    send(&[mouse_input(MOUSEEVENTF_MOVE, dx.round() as i32, dy.round() as i32)])
+    send(&[mouse_input(
+        MOUSEEVENTF_MOVE,
+        dx.round() as i32,
+        dy.round() as i32,
+    )])
 }
 
 pub fn mouse_button(button: MouseButton, down: bool) -> Result<(), String> {
@@ -336,13 +406,19 @@ pub fn key(code: u32, down: bool) -> Result<(), String> {
 
 // MARK: Hotkey
 
-pub fn start_hotkey(code: u32, on_press: Box<dyn Fn() + Send + Sync + 'static>) -> Result<(), String> {
+pub fn start_hotkey(
+    code: u32,
+    on_press: Box<dyn Fn() + Send + Sync + 'static>,
+) -> Result<(), String> {
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
     std::thread::Builder::new()
         .name("wick-hotkey".into())
         .spawn(move || unsafe {
             if let Err(e) = RegisterHotKey(None, 1, MOD_NOREPEAT, code) {
-                let _ = ready_tx.send(Err(format!("Couldn't register the kill-switch hotkey: {}", e.message())));
+                let _ = ready_tx.send(Err(format!(
+                    "Couldn't register the kill-switch hotkey: {}",
+                    e.message()
+                )));
                 return;
             }
             let _ = ready_tx.send(Ok(()));
@@ -354,5 +430,7 @@ pub fn start_hotkey(code: u32, on_press: Box<dyn Fn() + Send + Sync + 'static>) 
             }
         })
         .map_err(|e| e.to_string())?;
-    ready_rx.recv().unwrap_or_else(|_| Err("The hotkey thread stopped".into()))
+    ready_rx
+        .recv()
+        .unwrap_or_else(|_| Err("The hotkey thread stopped".into()))
 }

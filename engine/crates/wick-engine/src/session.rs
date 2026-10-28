@@ -24,12 +24,22 @@ const FRAME_WAIT: Duration = Duration::from_millis(50);
 
 pub const TARGETS: [&str; 3] = ["roblox", "testbench", "sim"];
 
-pub fn make_target(id: &str, scenario: Option<Scenario>, realtime: bool) -> Result<Box<dyn Target>, String> {
+pub fn make_target(
+    id: &str,
+    scenario: Option<Scenario>,
+    realtime: bool,
+) -> Result<Box<dyn Target>, String> {
     match id {
         "roblox" => Ok(Box::new(WindowTarget::new(WindowKind::Roblox))),
         "testbench" => Ok(Box::new(WindowTarget::new(WindowKind::Testbench))),
-        "sim" => Ok(Box::new(SimTarget::new(scenario.unwrap_or_default(), realtime))),
-        other => Err(format!("Unknown target \"{other}\". Use one of: {}.", TARGETS.join(", "))),
+        "sim" => Ok(Box::new(SimTarget::new(
+            scenario.unwrap_or_default(),
+            realtime,
+        ))),
+        other => Err(format!(
+            "Unknown target \"{other}\". Use one of: {}.",
+            TARGETS.join(", ")
+        )),
     }
 }
 
@@ -64,11 +74,17 @@ impl Session {
                 session_loop(target, rx, emitter, kills);
             })
             .map_err(|e| e.to_string())?;
-        Ok(Session { target: target.to_string(), tx, join: Some(join) })
+        Ok(Session {
+            target: target.to_string(),
+            tx,
+            join: Some(join),
+        })
     }
 
     pub fn send(&self, msg: Msg) -> Result<(), String> {
-        self.tx.send(msg).map_err(|_| "The session stopped".to_string())
+        self.tx
+            .send(msg)
+            .map_err(|_| "The session stopped".to_string())
     }
 }
 
@@ -100,7 +116,12 @@ fn end_run(run: &mut MacroRun, end: RunEnd, target: &mut dyn Target, emitter: &E
     emitter.event("macro.end", params);
 }
 
-fn session_loop(mut target: Box<dyn Target>, rx: Receiver<Msg>, emitter: Emitter, kills: Arc<AtomicU64>) {
+fn session_loop(
+    mut target: Box<dyn Target>,
+    rx: Receiver<Msg>,
+    emitter: Emitter,
+    kills: Arc<AtomicU64>,
+) {
     let mut run: Option<(MacroRun, u64)> = None;
     let mut last_frame: Option<Arc<Frame>> = None;
     let (mut last_preview, mut last_stats) = (Instant::now() - PREVIEW_EVERY, Instant::now());
@@ -112,11 +133,19 @@ fn session_loop(mut target: Box<dyn Target>, rx: Receiver<Msg>, emitter: Emitter
             match msg {
                 Msg::Run(spec, reply) => {
                     if let Some((mut r, _)) = run.take() {
-                        end_run(&mut r, RunEnd::Stopped("replaced by a new run".into()), target.as_mut(), &emitter);
+                        end_run(
+                            &mut r,
+                            RunEnd::Stopped("replaced by a new run".into()),
+                            target.as_mut(),
+                            &emitter,
+                        );
                     }
                     match MacroRun::start(*spec, target.as_ref()) {
                         Ok(r) => {
-                            emitter.event("macro.state", json!({ "state": "running", "id": r.spec.id }));
+                            emitter.event(
+                                "macro.state",
+                                json!({ "state": "running", "id": r.spec.id }),
+                            );
                             run = Some((r, kills.load(Ordering::SeqCst)));
                             let _ = reply.send(Ok(()));
                         }
@@ -142,7 +171,12 @@ fn session_loop(mut target: Box<dyn Target>, rx: Receiver<Msg>, emitter: Emitter
                 }
                 Msg::Close => {
                     if let Some((mut r, _)) = run.take() {
-                        end_run(&mut r, RunEnd::Stopped("session closed".into()), target.as_mut(), &emitter);
+                        end_run(
+                            &mut r,
+                            RunEnd::Stopped("session closed".into()),
+                            target.as_mut(),
+                            &emitter,
+                        );
                     }
                     return;
                 }
@@ -151,7 +185,12 @@ fn session_loop(mut target: Box<dyn Target>, rx: Receiver<Msg>, emitter: Emitter
 
         if let Some((r, epoch)) = &mut run {
             if kills.load(Ordering::SeqCst) != *epoch {
-                end_run(r, RunEnd::Stopped("kill switch".into()), target.as_mut(), &emitter);
+                end_run(
+                    r,
+                    RunEnd::Stopped("kill switch".into()),
+                    target.as_mut(),
+                    &emitter,
+                );
                 run = None;
             }
         }
@@ -173,7 +212,10 @@ fn session_loop(mut target: Box<dyn Target>, rx: Receiver<Msg>, emitter: Emitter
         if let Some(f) = &frame {
             if last_preview.elapsed() >= PREVIEW_EVERY {
                 last_preview = Instant::now();
-                emitter.event("preview", preview(f, target.as_ref(), run.as_ref().map(|(r, _)| r)));
+                emitter.event(
+                    "preview",
+                    preview(f, target.as_ref(), run.as_ref().map(|(r, _)| r)),
+                );
             }
         }
         if last_stats.elapsed() >= STATS_EVERY {
@@ -181,7 +223,11 @@ fn session_loop(mut target: Box<dyn Target>, rx: Receiver<Msg>, emitter: Emitter
             let mut status = target.status();
             status["target"] = json!(target.id());
             status["fps"] = json!(frames as f64 / secs);
-            status["tickMs"] = json!(if frames > 0 { busy.as_secs_f64() * 1000.0 / frames as f64 } else { 0.0 });
+            status["tickMs"] = json!(if frames > 0 {
+                busy.as_secs_f64() * 1000.0 / frames as f64
+            } else {
+                0.0
+            });
             status["latency"] = json!(target.latency());
             emitter.event("session.stats", status);
             if let Some((r, _)) = &run {
@@ -245,7 +291,13 @@ mod tests {
             permissions: permissions.iter().map(|p| p.to_string()).collect(),
             regions: HashMap::from([(
                 "bar".into(),
-                RegionSpec { anchor: "bottom-center".into(), x: 0.0, y: -0.18, w: 0.46, h: 0.06 },
+                RegionSpec {
+                    anchor: "bottom-center".into(),
+                    x: 0.0,
+                    y: -0.18,
+                    w: 0.46,
+                    h: 0.06,
+                },
             )]),
             settings: json!({}),
         }
@@ -255,8 +307,15 @@ mod tests {
     fn a_simple_controller_keeps_the_tick_in_the_zone() {
         let scores: Vec<f64> = (1..=5)
             .map(|seed| {
-                let r = run_headless(spec(CONTROLLER, &["mouse.click"]), Scenario { seed, ..Scenario::default() }, 20.0)
-                    .unwrap();
+                let r = run_headless(
+                    spec(CONTROLLER, &["mouse.click"]),
+                    Scenario {
+                        seed,
+                        ..Scenario::default()
+                    },
+                    20.0,
+                )
+                .unwrap();
                 r["score"]["inZone"].as_f64().unwrap()
             })
             .collect();
@@ -275,7 +334,10 @@ mod tests {
     fn undeclared_input_stops_the_macro() {
         let r = run_headless(spec(CONTROLLER, &[]), Scenario::default(), 5.0).unwrap();
         assert_eq!(r["end"]["reason"], "error");
-        assert!(r["end"]["error"].as_str().unwrap().contains("mouse.click"), "{r}");
+        assert!(
+            r["end"]["error"].as_str().unwrap().contains("mouse.click"),
+            "{r}"
+        );
         assert_eq!(r["inputs"], 0);
     }
 
@@ -283,6 +345,12 @@ mod tests {
     fn unknown_regions_are_reported() {
         let bad = r##"export default { async run(ctx) { ctx.screen.track("nope", { color: "#ffffff" }); await ctx.wait(100); } };"##;
         let r = run_headless(spec(bad, &[]), Scenario::default(), 1.0).unwrap();
-        assert!(r["end"]["error"].as_str().unwrap().contains("Unknown region \"nope\""), "{r}");
+        assert!(
+            r["end"]["error"]
+                .as_str()
+                .unwrap()
+                .contains("Unknown region \"nope\""),
+            "{r}"
+        );
     }
 }

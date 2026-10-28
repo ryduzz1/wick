@@ -88,7 +88,13 @@ mod tests {
     use super::*;
 
     fn spec(anchor: &str, x: f64, y: f64, w: f64, h: f64) -> RegionSpec {
-        RegionSpec { anchor: anchor.into(), x, y, w, h }
+        RegionSpec {
+            anchor: anchor.into(),
+            x,
+            y,
+            w,
+            h,
+        }
     }
 
     #[test]
@@ -120,7 +126,10 @@ mod tests {
         assert!(spec("middle", 0.0, 0.0, 1.0, 1.0).validate("a").is_err());
         assert!(spec("center", 0.0, 0.0, 0.0, 1.0).validate("a").is_err());
         for anchor in ANCHORS {
-            assert!(spec(anchor, 0.0, 0.0, 1.0, 1.0).validate("a").is_ok(), "{anchor}");
+            assert!(
+                spec(anchor, 0.0, 0.0, 1.0, 1.0).validate("a").is_ok(),
+                "{anchor}"
+            );
         }
     }
 }

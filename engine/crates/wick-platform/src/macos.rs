@@ -67,7 +67,12 @@ struct RawWindow {
 }
 
 fn bounds(b: RawBounds) -> Bounds {
-    Bounds { x: b.x, y: b.y, w: b.w, h: b.h }
+    Bounds {
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+    }
 }
 
 pub fn list_windows() -> Vec<WindowInfo> {
@@ -89,7 +94,10 @@ pub fn list_windows() -> Vec<WindowInfo> {
 pub fn frontmost_window() -> Option<u64> {
     // The window list is ordered front to back; the first normal-layer window
     // belongs to the app with keyboard focus.
-    list_windows().into_iter().find(|w| w.layer == 0).map(|w| w.id)
+    list_windows()
+        .into_iter()
+        .find(|w| w.layer == 0)
+        .map(|w| w.id)
 }
 
 pub fn permissions() -> Permissions {
@@ -109,7 +117,13 @@ pub fn request_permissions() {
     }
 }
 
-extern "C" fn on_frame(context: *mut c_void, data: *const u8, width: usize, height: usize, stride: usize) {
+extern "C" fn on_frame(
+    context: *mut c_void,
+    data: *const u8,
+    width: usize,
+    height: usize,
+    stride: usize,
+) {
     let sink = unsafe { &*(context as *const FrameSink) };
     let bytes = unsafe { std::slice::from_raw_parts(data, stride * height) };
     sink(bytes, width, height, stride);
@@ -142,7 +156,11 @@ impl Capture {
         if handle.is_null() {
             drop(unsafe { Box::from_raw(sink) });
             let message = take_string(error);
-            return Err(if message.is_empty() { "Couldn't start capture.".into() } else { message });
+            return Err(if message.is_empty() {
+                "Couldn't start capture.".into()
+            } else {
+                message
+            });
         }
         Ok(Capture { handle, sink })
     }
@@ -170,7 +188,10 @@ pub fn mouse_move(x: f64, y: f64) -> Result<(), String> {
 }
 
 pub fn mouse_move_relative(dx: f64, dy: f64) -> Result<(), String> {
-    check(unsafe { wick_mac_mouse_move_relative(dx, dy) }, "mouse move")
+    check(
+        unsafe { wick_mac_mouse_move_relative(dx, dy) },
+        "mouse move",
+    )
 }
 
 pub fn mouse_button(button: MouseButton, down: bool) -> Result<(), String> {
@@ -179,7 +200,10 @@ pub fn mouse_button(button: MouseButton, down: bool) -> Result<(), String> {
         MouseButton::Right => 1,
         MouseButton::Middle => 2,
     };
-    check(unsafe { wick_mac_mouse_button(index, c_int::from(down)) }, "mouse button")
+    check(
+        unsafe { wick_mac_mouse_button(index, c_int::from(down)) },
+        "mouse button",
+    )
 }
 
 pub fn key_code(name: &str) -> Option<u32> {
@@ -187,7 +211,10 @@ pub fn key_code(name: &str) -> Option<u32> {
 }
 
 pub fn key(code: u32, down: bool) -> Result<(), String> {
-    check(unsafe { wick_mac_key(code as u16, c_int::from(down)) }, "key")
+    check(
+        unsafe { wick_mac_key(code as u16, c_int::from(down)) },
+        "key",
+    )
 }
 
 extern "C" fn on_hotkey(context: *mut c_void) {
@@ -195,7 +222,10 @@ extern "C" fn on_hotkey(context: *mut c_void) {
     callback();
 }
 
-pub fn start_hotkey(code: u32, on_press: Box<dyn Fn() + Send + Sync + 'static>) -> Result<(), String> {
+pub fn start_hotkey(
+    code: u32,
+    on_press: Box<dyn Fn() + Send + Sync + 'static>,
+) -> Result<(), String> {
     // The callback lives for the rest of the process, like the event tap.
     let context = Box::into_raw(Box::new(on_press)) as *mut c_void;
     if unsafe { wick_mac_hotkey_start(code as u16, on_hotkey, context) } != 0 {
