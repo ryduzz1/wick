@@ -19,7 +19,7 @@ Taken as is from Fuse's `companion/ui/styles.css`:
 - Buttons with a 7px radius; white primary buttons; transparent "quiet" buttons.
 - Cards and lists with a 9px radius on `#202020`–`#242424`, 1px borders around `#383838`.
 - Dialogs with a 16px radius, toasts in the top right, count pills, 16px line icons at a 1.6 stroke.
-- Italic serif logo mark: Fuse is **F**, Wick is **W**.
+- Italic serif logo mark: Fuse is **f**, Wick is **w**.
 
 If both apps keep the same base, it can later move into one shared stylesheet. Until then, keep the values below in sync with Fuse by hand.
 
@@ -109,7 +109,10 @@ For shared macros: the macro's name and author, the game, the README, the permis
 
 ## Logo
 
-An italic serif **W** in the same style as Fuse's **F** (Georgia-style, bold italic, black on a white rounded square), and nothing else.
+The same system as Fuse's **f**: a lowercase Georgia bold italic **w**.
+
+- In the sidebar, the bare white glyph next to the name, with no tile.
+- The app icon (`app/ui/assets/icon.png`, rebuilt with `swift scripts/build-icon.swift`) is the white glyph on Apple's 824pt rounded tile, filled with a `#2d2d2d`→`#181818` gradient and a faint edge. Larger marks in the app use the icon.
 
 ## Motion
 

@@ -7,6 +7,7 @@ import { checkManifest, loadMacro, MacroError } from './macro-loader.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(directory, '..');
+const icon = path.join(directory, 'ui', 'assets', 'icon.png');
 const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
 app.setName('Wick');
 app.setPath('userData', process.env.WICK_USER_DATA || path.join(app.getPath('appData'), 'wick'));
@@ -206,6 +207,7 @@ function createWindow() {
     show: !smoke,
     backgroundColor: '#181818',
     title: 'Wick',
+    icon,
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 17, y: 18 } } : {}),
     webPreferences: { preload: path.join(directory, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
@@ -218,6 +220,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(icon);
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       ...(process.platform === 'darwin'

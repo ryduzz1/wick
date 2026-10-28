@@ -50,12 +50,10 @@ button:focus-visible { outline: 2px solid #909090; outline-offset: 3px; }
 .window-space { height: 51px; flex-shrink: 0; -webkit-app-region: drag; }
 .brand { display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 600; padding: 6px 9px 22px; }
 .version { font-size: 11px; font-weight: 400; color: #aaa; margin-left: auto; }
-.mark {
-  position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
-  width: 28px; height: 29px; border-radius: 7px; background: #f4f4f4; color: #1a1a1a;
-  font-family: Georgia, "Times New Roman", serif; font-style: italic; font-weight: bold; font-size: 22px; line-height: 1; padding-right: 2px;
-}
-.mark.large { width: 55px; height: 57px; font-size: 44px; border-radius: 13px; }
+/* Same marks as Fuse: the bare glyph in the sidebar, the app icon everywhere else. */
+.mark { display: inline-block; flex-shrink: 0; width: 28px; height: 29px; background: transparent url("assets/icon.png") center/contain no-repeat; }
+.mark.large { width: 64px; height: 64px; }
+.mark.glyph { background: none; color: #f2f2f2; font-family: Georgia, "Times New Roman", serif; font-style: italic; font-weight: bold; font-size: 26px; line-height: 1; width: auto; min-width: 22px; height: 28px; padding: 0 2px 2px 0; display: inline-flex; align-items: center; justify-content: center; }
 .sidebar-action { justify-content: flex-start; padding: 9px; background: transparent; border: 0; width: 100%; margin-bottom: 22px; }
 .sidebar-action:hover { background: #373737; }
 .shortcut { font-size: 10px; color: #8b8b8b; margin-left: auto; }
