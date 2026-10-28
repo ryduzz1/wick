@@ -17,6 +17,8 @@ Wick works only from the outside, the way a person does:
 - **In:** it captures the Roblox window's pixels (ScreenCaptureKit on macOS, Windows Graphics Capture on Windows).
 - **Out:** it sends OS-level mouse and keyboard input (CGEvent on macOS, SendInput on Windows), and only while Roblox is the focused window.
 
+Wick is built for Roblox, but its engine isn't tied to it: each macro declares a target, the one window it may control. v1 ships the Roblox target plus a simulator and a test page for development. Other targets can be added later without changing macros.
+
 Wick never opens, reads, writes or injects into the Roblox process. That is a hard rule of the project, not a missing feature: Roblox's anti-cheat flags any memory access regardless of intent, and doing it is against Roblox's Terms of Use. Only run macros in games that allow them; that is between you and the game.
 
 ## Features (planned)

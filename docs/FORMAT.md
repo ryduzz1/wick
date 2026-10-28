@@ -24,6 +24,7 @@ bar-minigame/
   "version": "1.2.0",
   "description": "Keeps the tick inside the moving zone.",
   "author": "ryduzz1",
+  "target": "roblox",
   "game": { "name": "Example Game", "placeId": 1234567890 },
   "entry": "main.ts",
   "permissions": ["mouse.click"],
@@ -34,6 +35,7 @@ bar-minigame/
 }
 ```
 
+- `target` is the window the macro controls: `roblox` for real macros, `sim` or `testbench` while developing. See [targets](ARCHITECTURE.md#targets). The macro can't send input anywhere else.
 - `id` is `author/name`. Updates match on `id`; a new `version` replaces the code and keeps the user's settings and calibration.
 - `game.placeId` lets Wick warn you when you run a macro in a different game. It never blocks.
 - `settings` describes options the user can change in the UI without editing code. The macro reads them through `ctx.settings`.
@@ -92,8 +94,8 @@ Calibration is saved per macro and per user under Wick's app data, never in the 
 Macros are code from other people, so they run with nothing but the Wick API:
 
 - No filesystem, network, child processes, clipboard, timers outside `loop`, or OS APIs.
-- Screen access only through declared regions of the Roblox window.
-- Input only to the focused Roblox window, through the human profile, with the kill switch always active.
+- Screen access only through declared regions of the target window.
+- Input only to the target window while it is focused, through the human profile, with the kill switch always active.
 
 The manifest lists the kinds of input a macro uses, and the install screen shows them in plain words:
 
