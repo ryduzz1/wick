@@ -181,9 +181,14 @@ pub fn list_windows() -> Vec<WindowInfo> {
         .collect()
 }
 
-pub fn frontmost_window() -> Option<u64> {
+pub fn frontmost_pid() -> Option<u32> {
     let window = unsafe { GetForegroundWindow() };
-    (!window.0.is_null()).then_some(window.0 as usize as u64)
+    if window.0.is_null() {
+        return None;
+    }
+    let mut pid = 0u32;
+    unsafe { GetWindowThreadProcessId(window, Some(&mut pid)) };
+    (pid != 0).then_some(pid)
 }
 
 pub fn permissions() -> Permissions {

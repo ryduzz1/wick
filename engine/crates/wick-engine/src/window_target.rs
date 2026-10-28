@@ -202,7 +202,7 @@ impl Target for WindowTarget {
             return self.focus.1;
         }
         let focused = match &self.window {
-            Some(w) => wick_platform::frontmost_window() == Some(w.id),
+            Some(w) => wick_platform::is_frontmost(w),
             None => false,
         };
         self.focus = (Some(Instant::now()), focused);

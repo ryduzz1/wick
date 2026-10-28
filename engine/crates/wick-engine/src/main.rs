@@ -50,9 +50,7 @@ fn target_list() -> Value {
                     WindowKind::Testbench
                 };
                 let window = kind.find();
-                let focused = window
-                    .as_ref()
-                    .is_some_and(|w| wick_platform::frontmost_window() == Some(w.id));
+                let focused = window.as_ref().is_some_and(wick_platform::is_frontmost);
                 json!({
                     "id": id,
                     "label": if id == "roblox" { "Roblox" } else { "Test bench" },

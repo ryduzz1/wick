@@ -105,9 +105,16 @@ pub fn list_windows() -> Vec<WindowInfo> {
     imp::list_windows()
 }
 
-/// The id of the window that currently receives keyboard input.
-pub fn frontmost_window() -> Option<u64> {
-    imp::frontmost_window()
+/// The process of the app that currently receives keyboard input.
+pub fn frontmost_pid() -> Option<u32> {
+    imp::frontmost_pid()
+}
+
+/// Whether `window`'s app has keyboard focus. Compared by process, because
+/// a game can keep small windows of its own in front of its main one
+/// (Roblox's menu button is a separate window on macOS).
+pub fn is_frontmost(window: &WindowInfo) -> bool {
+    frontmost_pid() == Some(window.pid)
 }
 
 pub fn permissions() -> Permissions {

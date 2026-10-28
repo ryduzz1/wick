@@ -21,7 +21,7 @@ pub fn list_windows() -> Vec<WindowInfo> {
     Vec::new()
 }
 
-pub fn frontmost_window() -> Option<u64> {
+pub fn frontmost_pid() -> Option<u32> {
     None
 }
 

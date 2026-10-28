@@ -119,6 +119,7 @@ Built as one large pass:
 ### Fixes from first use on a real game
 
 - On macOS, Wick can only see windows on the current screen, so a fullscreen Roblox in another Space disappears when you switch away. Agent tools used to hand back the last frame with a zero-size viewport (so every region collapsed); `observe`, `detect` and `read` now refuse and say to switch to the game, or keep it windowed.
+- Roblox on macOS keeps a small window of its own (the menu button) in front of the game window, so Wick never saw the game as focused: a `record --you` heard none of the player's input, and a macro's input would have been dropped. Focus is now compared by process (the app with keyboard focus) on macOS and Windows.
 
 ## Still to test by hand
 

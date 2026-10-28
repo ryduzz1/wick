@@ -100,13 +100,14 @@ pub fn list_windows() -> Vec<WindowInfo> {
         .collect()
 }
 
-pub fn frontmost_window() -> Option<u64> {
+pub fn frontmost_pid() -> Option<u32> {
     // The window list is ordered front to back; the first normal-layer window
-    // belongs to the app with keyboard focus.
+    // belongs to the app with keyboard focus. (NSWorkspace's frontmost app
+    // goes stale in a process without a running app loop, like the engine.)
     list_windows()
         .into_iter()
         .find(|w| w.layer == 0)
-        .map(|w| w.id)
+        .map(|w| w.pid)
 }
 
 pub fn permissions() -> Permissions {
