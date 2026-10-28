@@ -1,0 +1,20 @@
+# Rust engine
+/engine/target/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Local
+.env
+node_modules/
+dist/
+coverage/
+*.wick
+
+# Local recordings and per-user macro data
+.wick/
