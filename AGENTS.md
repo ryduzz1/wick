@@ -9,3 +9,5 @@
 - At the end of each implementation pass, update `docs/ROADMAP.md` with completed work, remaining priorities, and verification results. Distinguish partial progress from completed features.
 - Commit and push to the current branch's remote whenever a coherent set of changes is done and relevant automated checks pass; there's no need to ask first. This is the user's standing request. Preserve unrelated work, never force-push, and report a blocked push accurately.
 - Large passes are welcome. Commit at checkpoints inside a long pass so progress is never only local.
+- The user tests end to end once the app is finished, not between passes. Keep going through the roadmap in large passes without waiting for manual testing; verify with automated checks, the simulator and the app smoke test, and keep a running list of what still needs testing by hand in `docs/ROADMAP.md`.
+- Visual style: grays plus the single ember accent, and a soft red only for errors (see `docs/DESIGN.md`). Don't introduce other colors.

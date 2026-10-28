@@ -1,11 +1,11 @@
 # Design
 
-Wick and Fuse are siblings. Wick keeps Fuse's foundation (palette, layout, type, components, tone) so the two clearly come from the same maker, and adds two things of its own: one ember accent, and a live style for watching macros run in real time.
+Wick and Fuse are siblings. Wick keeps Fuse's foundation (palette, layout, type, components, tone) so the two clearly come from the same maker, and adds two things of its own: a single ember accent, and a live style for watching macros run in real time.
 
 ## Principles
 
 - **Quiet by default, loud when live.** Idle screens are calm and gray like Fuse. Color and motion are saved for things that are running or need attention.
-- **Ember means on.** The accent marks what is running, plus the logo and the Run button. Nothing else uses it.
+- **One accent.** Everything is gray, white and black except ember, which marks what is running and the Run button. The only other color is a soft red for errors. No green, yellow or blue anywhere, including native controls (checkboxes use a light gray `accent-color`).
 - **Show what the macro sees.** Every region, detector and tracker can be drawn over the real game frame. If something fails, you should be able to see why.
 - **Stop is always one key away.** The kill-switch hotkey is visible whenever a macro can send input.
 - **Plain words.** Same tone as Fuse: short sentences, no jargon on the main path, details tucked under "More."
@@ -34,13 +34,11 @@ If both apps keep the same base, it can later move into one shared stylesheet. U
 | `--hover` | `#393939` | Hover fill |
 | `--text` | `#ececec` | Main text |
 | `--muted` | `#969696` | Secondary text |
-| `--ember` | `#f08a4b` | Running, Run button, logo. Wick only |
+| `--ember` | `#f08a4b` | Running, Run button, trackers on the live view. Wick only |
 | `--ember-soft` | `#3a261b` | Background behind running items |
-| `--green` | `#7eca96` | Success, detector "found" |
-| `--yellow` | `#e3cf6e` | Warnings |
-| `--red` | `#e8a89f` | Errors, stopped by the kill switch |
+| `--red` | `#e8a89f` | Errors only |
 
-Fuse uses an amber (`#dfba78`) for warnings. It sits too close to ember, so Wick uses `--yellow` for warnings instead and keeps orange meaning "on."
+"Found", "connected" and "done" use a `--text` dot, not green. Warnings and notices use the normal card style, not a colored box.
 
 Overlay colors (drawn on the game frame, so they need to stand out against any game):
 
@@ -48,7 +46,7 @@ Overlay colors (drawn on the game frame, so they need to stand out against any g
 | --- | --- | --- |
 | `--overlay-region` | `#ffffff` at 80%, 1.5px dashed | Region outlines |
 | `--overlay-mask` | `#f08a4b` at 45% | Pixels a detector matched |
-| `--overlay-track` | `#7eca96` | Tracker crosshair and its trail |
+| `--overlay-track` | `#f08a4b` | Tracker extent, crosshair and trail |
 | `--overlay-label` | `#000000` at 70% behind `#ffffff` text | Region and tracker labels |
 
 ## Typography
@@ -66,9 +64,10 @@ Every macro is in one of these states, everywhere it appears (library row, top b
 | Idle | Gray dot | Ready |
 | Waiting | Gray dot, pulsing | Waiting for Roblox / Checking start point |
 | Running | Ember dot, pulsing; item gets `--ember-soft` fill | Running · loop 12 of ∞ |
-| Recovering | Yellow dot | Recovering: resetting character |
-| Stopped | Red dot | Stopped by kill switch / Stopped: zone not found for 5s |
-| Done | Green dot | Done · 50 loops, 98% |
+| Paused or recovering | Ember dot, solid | Paused: click the Roblox window / Recovering: resetting character |
+| Stopped | Gray dot | Stopped by kill switch / Stopped: zone not found for 5s |
+| Error | Red dot | Error: the macro threw |
+| Done | White dot | Done · 50 loops, 98% |
 
 The dot never carries meaning alone; the label always says the state in words.
 
@@ -85,7 +84,7 @@ The main editing and debugging surface: the captured Roblox frame, scaled to fit
 
 ### Trace graphs
 
-Small line graphs of tracker values over the last few seconds (for the bar minigame: tick x, zone left and right edges, and click marks along the bottom). Lines use `--text`, `--green` and `--muted`; inputs are short ember ticks. Hovering shows exact values. The same graphs appear in recordings and run logs, so what an agent reads as a trace, you can see as a picture.
+Small line graphs of tracker values over the last few seconds (for the bar minigame: tick x, zone left and right edges, and click marks along the bottom). Lines use `--text` and `--muted` (dashed where they'd overlap); inputs are short ember ticks. Hovering shows exact values. The same graphs appear in recordings and run logs, so what an agent reads as a trace, you can see as a picture.
 
 ### Stat tiles
 
@@ -102,7 +101,7 @@ A small always-on-top panel shown over Roblox while a macro runs, so you don't n
 
 ### Kill-switch chip
 
-Whenever a macro can send input, the top bar shows a chip with the hotkey (`F8 · Stop all`). Pressing the key turns the chip red for a moment and shows a toast saying what was stopped.
+Whenever a macro can send input, the top bar shows a chip with the hotkey (`F8 · Stop all`). Pressing the key highlights the chip for a moment and shows a toast saying what was stopped.
 
 ### Install screen
 
@@ -110,7 +109,7 @@ For shared macros: the macro's name and author, the game, the README, the permis
 
 ## Logo
 
-An italic serif **W** in the same style as Fuse's **F** (Georgia-style, bold italic, white on a rounded square). Wick's version adds a small ember flame where the W's middle peak points up, so the marks pair at a glance but Wick is the one that's lit.
+An italic serif **W** in the same style as Fuse's **F** (Georgia-style, bold italic, black on a white rounded square), and nothing else.
 
 ## Motion
 

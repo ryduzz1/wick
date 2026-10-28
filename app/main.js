@@ -16,6 +16,7 @@ let window = null;
 let bench = null;
 // The target the engine's session is watching, so a run can reuse it.
 let sessionTarget = null;
+let askedForPermissions = false;
 // Macro folders shown in the app: the bundled examples plus any the user opened.
 const preferencesPath = () => path.join(app.getPath('userData'), 'preferences.json');
 
@@ -144,6 +145,10 @@ const actions = {
     return runs;
   },
   requestPermissions: () => engine.call('permissions.request'),
+  restart() {
+    app.relaunch();
+    app.quit();
+  },
   openPrivacySettings({ pane }) {
     const anchor = pane === 'accessibility' ? 'Privacy_Accessibility' : 'Privacy_ScreenCapture';
     return shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${anchor}`);
@@ -251,6 +256,12 @@ app.whenReady().then(async () => {
     const permissions = await engine.call('permissions').catch(() => null);
     if (permissions && !permissions.hotkey.active && !globalShortcut.isRegistered('F8')) {
       globalShortcut.register('F8', () => engine.call('killswitch').catch(() => {}));
+    }
+    // Ask macOS for anything missing once per launch, so the system prompts
+    // appear without the user having to find a button.
+    if (permissions && process.platform === 'darwin' && !smoke && !askedForPermissions) {
+      askedForPermissions = true;
+      if (!permissions.screenRecording || !permissions.accessibility) engine.call('permissions.request').catch(() => {});
     }
   });
 

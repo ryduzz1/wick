@@ -77,7 +77,7 @@ const pct = (v) => `${(v * 100).toFixed(1)}%`;
 
 function setRunState(kind, label) {
   const dot = $('stateDot');
-  dot.className = `dot ${kind === 'running' ? 'ember pulse' : kind === 'waiting' ? 'pulse' : kind === 'paused' ? 'yellow' : kind === 'done' ? 'green' : kind === 'stopped' || kind === 'error' ? 'red' : ''}`;
+  dot.className = `dot ${kind === 'running' ? 'ember pulse' : kind === 'waiting' ? 'pulse' : kind === 'paused' ? 'ember' : kind === 'done' ? 'on' : kind === 'error' ? 'red' : ''}`;
   $('stateLabel').textContent = label;
   const running = kind === 'running' || kind === 'paused' || kind === 'waiting';
   $('runButton').classList.toggle('hidden', running);
@@ -124,7 +124,7 @@ function renderTargets() {
     b.setAttribute('aria-checked', String(state.target === id));
     const info = state.targets[id];
     const dot = document.createElement('span');
-    dot.className = `dot ${info?.found ? 'green' : ''}`;
+    dot.className = `dot ${info?.found ? 'on' : ''}`;
     b.append(dot, document.createTextNode(TARGET_LABELS[id]));
     b.title = info?.found ? `${TARGET_LABELS[id]} found` : `${TARGET_LABELS[id]} isn't open`;
     b.disabled = Boolean(state.running);
@@ -280,7 +280,7 @@ function drawPreview(p) {
     g.lineWidth = 1.5 * dpr;
     for (const t of overlay.trackers) {
       if (!t.seen) continue;
-      g.strokeStyle = '#7eca96';
+      g.strokeStyle = '#f08a4b';
       g.strokeRect(X(t.left), Y(t.top), (t.right - t.left) * fw, (t.bottom - t.top) * fh);
       const cx = X(t.x);
       const cy = Y(t.y);
@@ -392,16 +392,21 @@ async function refreshStatus() {
   try {
     const s = await call('status');
     $('appVersion').textContent = s.appVersion;
-    $('engineDot').className = 'dot green';
+    $('engineDot').className = 'dot on';
     $('engineLabel').textContent = 'Engine running';
     $('engineSub').textContent = `${s.engine.version} · ${s.engine.platform}`;
     for (const t of s.targets) state.targets[t.id] = t;
     state.permissions = s.permissions;
     const missing = [];
-    if (!s.permissions.screenRecording) missing.push('Screen Recording, to see the game window');
-    if (!s.permissions.accessibility) missing.push('Accessibility, to send clicks and keys and to watch for the F8 kill switch');
-    $('permissionNotice').classList.toggle('hidden', wick.platform !== 'darwin' || missing.length === 0);
-    $('permissionText').textContent = `Allow ${missing.join(', and ')}. The simulator works without them.`;
+    if (!s.permissions.screenRecording) missing.push('Screen Recording (to see the game window)');
+    if (!s.permissions.accessibility) missing.push('Accessibility (to click, press keys and catch F8 from any app)');
+    const needed = wick.platform === 'darwin' && missing.length > 0;
+    $('permissionNotice').classList.toggle('hidden', !needed);
+    $('permissionText').textContent =
+      `Wick asked macOS for ${missing.join(' and ')}. Turn on Electron (or Wick) in System Settings, then restart Wick so the change applies. The simulator works without them.`;
+    state.settingsPane = !s.permissions.screenRecording ? 'screen' : 'accessibility';
+    clearTimeout(state.permissionTimer);
+    if (needed) state.permissionTimer = setTimeout(refreshStatus, 3000);
     $('killChip').title = s.permissions.hotkey.active
       ? 'Stops every macro. Works from any app.'
       : 'Stops every macro. F8 works while Wick is open; grant Accessibility so it works from any app.';
@@ -485,9 +490,8 @@ $('simulateButton').onclick = simulate;
 $('openBench').onclick = () => call('openTestBench');
 $('showFolder').onclick = () => state.selected && call('showFolder', { folder: state.selected.folder });
 $('clearLog').onclick = () => $('runLog').replaceChildren();
-$('grantPermissions').onclick = () => call('requestPermissions').then(refreshStatus);
-$('openScreenSettings').onclick = () => call('openPrivacySettings', { pane: 'screen' });
-$('openAxSettings').onclick = () => call('openPrivacySettings', { pane: 'accessibility' });
+$('openPermissionSettings').onclick = () => call('openPrivacySettings', { pane: state.settingsPane });
+$('restartApp').onclick = () => call('restart');
 
 icons();
 clearLive();

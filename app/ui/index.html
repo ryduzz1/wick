@@ -10,7 +10,7 @@
 <body>
   <aside class="sidebar">
     <div class="window-space"></div>
-    <div class="brand"><span class="mark">W<i class="flame"></i></span><span>Wick</span><span class="version" id="appVersion"></span></div>
+    <div class="brand"><span class="mark">W</span><span>Wick</span><span class="version" id="appVersion"></span></div>
     <button id="openMacro" class="sidebar-action"><span data-icon="plus"></span>Open macro folder<span class="shortcut" id="openShortcut">⌘ O</span></button>
     <div class="sidebar-label">Macros</div>
     <div id="macroList" class="macro-list"></div>
@@ -33,18 +33,16 @@
 
     <main>
       <section id="permissionNotice" class="notice hidden">
-        <h3>Wick needs two macOS permissions</h3>
+        <h3 id="permissionTitle">Allow Wick in System Settings</h3>
         <p id="permissionText"></p>
         <div class="actions">
-          <button id="grantPermissions" class="primary small-button">Ask macOS</button>
-          <button id="openScreenSettings" class="small-button">Screen Recording settings</button>
-          <button id="openAxSettings" class="small-button">Accessibility settings</button>
+          <button id="openPermissionSettings" class="primary small-button">Open System Settings</button>
+          <button id="restartApp" class="small-button">Restart Wick</button>
         </div>
-        <p class="fine-print">After you allow them, quit and reopen Wick so macOS applies the change.</p>
       </section>
 
       <section id="emptyView" class="welcome hidden">
-        <span class="mark large">W<i class="flame"></i></span>
+        <span class="mark large">W</span>
         <h1>No macros yet</h1>
         <p>Open a folder that contains a <code>wick.json</code>.</p>
       </section>
