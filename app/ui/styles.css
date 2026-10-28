@@ -229,3 +229,14 @@ dialog { background: #222; color: #eee; width: 420px; max-width: calc(100vw - 40
 dialog::backdrop { background: #0008; }
 dialog h2 { font-size: 19px; letter-spacing: -.3px; margin-bottom: 6px; }
 dialog label { display: block; font-size: 12px; color: #c8c8c8; margin-top: 16px; }
+
+/* Settings */
+.sidebar-bottom .sidebar-action { margin-bottom: 8px; }
+.dialog-section { font-size: 12px; font-weight: 500; color: #919191; text-transform: none; margin: 22px 0 4px; }
+dialog label.check-row { display: flex; align-items: center; gap: 8px; color: #e7e7e7; }
+dialog label.check-row input { display: inline-block; width: auto; margin: 0; }
+dialog .range-label { margin-top: 16px; }
+dialog .range-label input { padding: 0; border: 0; background: none; }
+dialog .range-label.disabled { opacity: .45; }
+.mono-path { font-family: var(--mono); font-size: 11px; word-break: break-all; color: #c8c8c8; }
+dialog label.check-row + p { margin-top: 8px; }

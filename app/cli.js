@@ -27,8 +27,10 @@ Usage: wick <command> [options]
   regions                        List the macro's regions
   region set NAME [--anchor A] [--x N] [--y N] [--w N] [--h N]
   region remove NAME
-  run [--seconds S] [--live]     Run the macro (instantly on sim, unless --live)
-  simulate [--seeds N] [--seconds S]
+  run [--seconds S] [--live] [--exact]
+                                 Run the macro (instantly on sim, unless --live).
+                                 --exact sends input without the human profile
+  simulate [--seeds N] [--seconds S] [--exact]
   telemetry                      The last run's result
   stop                           Stop whatever is running
   new NAME [--target T] [--dir D] Create a macro (in the library by default)
@@ -42,7 +44,7 @@ Options for every command:
 
 Output is JSON. Input only reaches the target while it has focus; F8 stops everything.`;
 
-const BOOLEAN = new Set(['local', 'live', 'help', 'mask']);
+const BOOLEAN = new Set(['local', 'live', 'help', 'mask', 'exact']);
 const REPEATED = new Set(['track', 'input']);
 
 export function parseArgs(argv) {
@@ -193,10 +195,10 @@ export function toRequest(positional, flags, cwd = process.cwd()) {
     }
     case 'run':
       needFolder();
-      return ['run', { ...base, seconds: number(flags.seconds), live: Boolean(flags.live) }];
+      return ['run', { ...base, seconds: number(flags.seconds), live: Boolean(flags.live), exact: Boolean(flags.exact) }];
     case 'simulate':
       needFolder();
-      return ['simulate', { ...base, seeds: number(flags.seeds) ?? 5, seconds: number(flags.seconds) ?? 30 }];
+      return ['simulate', { ...base, seeds: number(flags.seeds) ?? 5, seconds: number(flags.seconds) ?? 30, exact: Boolean(flags.exact) }];
     case 'telemetry':
       return ['telemetry', {}];
     case 'stop':

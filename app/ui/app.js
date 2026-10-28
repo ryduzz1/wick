@@ -21,6 +21,7 @@ const ICONS = {
   square: '<rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2.5 2"/>',
   drop: '<path d="M8 2.2S4 6.6 4 9.6a4 4 0 0 0 8 0c0-3-4-7.4-4-7.4z"/>',
   close: '<path d="m4 4 8 8M12 4l-8 8"/>',
+  sliders: '<path d="M3 4.5h10M3 11.5h10"/><circle cx="6" cy="4.5" r="1.6"/><circle cx="10.5" cy="11.5" r="1.6"/>',
 };
 
 const TARGET_LABELS = { sim: 'Simulator', testbench: 'Test bench', roblox: 'Roblox' };
@@ -679,6 +680,49 @@ $('newDialog').onclose = async () => {
   }
 };
 
+async function openSettings() {
+  const form = $('settingsDialogForm');
+  const [input, info] = await Promise.all([call('inputPreferences'), call('libraryInfo').catch(() => null)]);
+  form.elements.human.checked = input.human;
+  form.elements.precision.value = Math.round(input.precision * 100);
+  renderPrecision();
+  $('libraryFolder').textContent = info?.folder ?? '';
+  $('settingsDialog').showModal();
+}
+
+function renderPrecision() {
+  const form = $('settingsDialogForm');
+  $('precisionText').textContent = form.elements.precision.value;
+  form.elements.precision.disabled = !form.elements.human.checked;
+  $('precisionLabel').classList.toggle('disabled', !form.elements.human.checked);
+}
+
+$('settingsDialogForm').oninput = async () => {
+  renderPrecision();
+  const form = $('settingsDialogForm');
+  try {
+    await call('saveInputPreferences', { human: form.elements.human.checked, precision: Number(form.elements.precision.value) / 100 });
+  } catch (e) {
+    toast('Couldn\'t save settings', e.message, 'error');
+  }
+};
+
+$('chooseLibrary').onclick = async () => {
+  try {
+    const chosen = await call('chooseLibrary');
+    if (!chosen) return;
+    $('libraryFolder').textContent = chosen.folder;
+    if (!state.running) await loadMacros();
+  } catch (e) {
+    toast('Couldn\'t change the library', e.message, 'error');
+  }
+};
+
+$('showLibrary').onclick = async () => {
+  const info = await call('libraryInfo').catch(() => null);
+  if (info) call('showFolder', { folder: info.folder, create: true });
+};
+
 async function copySelected() {
   const m = state.selected;
   if (!m || state.running) return;
@@ -748,6 +792,9 @@ wick.onEvent((method, params) => {
     case 'app.newMacro':
       newMacro();
       break;
+    case 'app.settings':
+      openSettings();
+      break;
     case 'agent.target':
       if (!state.running && params.target !== state.target) {
         state.target = params.target;
@@ -779,6 +826,8 @@ const mod = wick.platform === 'darwin' ? '⌘' : 'Ctrl';
 $('openShortcut').textContent = `${mod} O`;
 $('newShortcut').textContent = `${mod} N`;
 $('newMacro').onclick = newMacro;
+$('settingsShortcut').textContent = `${mod} ,`;
+$('openSettings').onclick = openSettings;
 $('emptyNew').onclick = newMacro;
 $('openMacro').onclick = openMacro;
 $('runButton').onclick = run;

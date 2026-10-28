@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { checkManifest, loadMacro, resolveSettings } from '../app/macro-loader.js';
+import { checkManifest, humanProfile, loadMacro, resolveSettings } from '../app/macro-loader.js';
 
 const example = fileURLToPath(new URL('../examples/bar-minigame/', import.meta.url));
 
@@ -93,4 +93,10 @@ test('reports a missing entry or manifest', async () => {
     await rm(noEntry, { recursive: true, force: true });
     await rm(noManifest, { recursive: true, force: true });
   }
+});
+
+test('turns the input preference into a human profile', () => {
+  assert.deepEqual(humanProfile(undefined, 3), { precision: 0.85, seed: 3 });
+  assert.deepEqual(humanProfile({ precision: 2 }, 1), { precision: 1, seed: 1 });
+  assert.equal(humanProfile({ human: false }), null);
 });

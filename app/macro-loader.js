@@ -96,8 +96,18 @@ async function readJson(path, label) {
   }
 }
 
+/** The app's input preference when nothing is saved: human-like, fairly precise. */
+export const DEFAULT_INPUT = { human: true, precision: 0.85 };
+
+/** The engine's human profile for an input preference, or null for exact input. */
+export function humanProfile(input = DEFAULT_INPUT, seed = Math.floor(Math.random() * 2 ** 32)) {
+  const { human, precision } = { ...DEFAULT_INPUT, ...input };
+  if (!human) return null;
+  return { precision: Math.min(1, Math.max(0, Number(precision))), seed };
+}
+
 /** Loads a macro folder into the shape the engine's macro.run expects. */
-export async function loadMacro(folder, { settings: overrides } = {}) {
+export async function loadMacro(folder, { settings: overrides, input } = {}) {
   const manifest = await readJson(join(folder, 'wick.json'), 'wick.json');
   if (manifest === undefined) fail(`There's no wick.json in ${folder}.`);
   const problems = checkManifest(manifest);
@@ -120,6 +130,7 @@ export async function loadMacro(folder, { settings: overrides } = {}) {
     permissions: manifest.permissions ?? [],
     regions,
     settings: resolveSettings(manifest, overrides),
+    human: humanProfile(input),
     manifest,
   };
 }

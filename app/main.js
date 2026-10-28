@@ -7,7 +7,7 @@ import { EngineClient, enginePath } from './engine-client.js';
 import { createCommands } from './commands.js';
 import { serve } from './control.js';
 import * as library from './library.js';
-import { checkManifest, loadMacro, MacroError } from './macro-loader.js';
+import { checkManifest, DEFAULT_INPUT, loadMacro, MacroError } from './macro-loader.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(directory, '..');
@@ -211,8 +211,13 @@ const actions = {
     await engine.call('session.stop');
     sessionTarget = null;
   },
+  inputPreferences: () => ({ ...DEFAULT_INPUT, ...preferences().input }),
+  saveInputPreferences(input) {
+    savePreferences({ input: { ...DEFAULT_INPUT, ...preferences().input, ...input } });
+    return { ...DEFAULT_INPUT, ...preferences().input };
+  },
   async run({ folder, target, settings }) {
-    const spec = await loadMacro(folder, { settings });
+    const spec = await loadMacro(folder, { settings, input: preferences().input });
     await ensureSession(target);
     await engine.call('macro.run', { macro: spec });
     return { id: spec.id };
@@ -220,9 +225,11 @@ const actions = {
   stop: () => engine.call('macro.stop'),
   killswitch: () => engine.call('killswitch'),
   async simulate({ folder, settings, seeds = 5, seconds = 30 }) {
-    const spec = await loadMacro(folder, { settings });
+    const spec = await loadMacro(folder, { settings, input: preferences().input });
     const runs = await Promise.all(
-      Array.from({ length: seeds }, (_, i) => engine.call('sim.run', { macro: spec, scenario: { seed: i + 1 }, seconds })),
+      Array.from({ length: seeds }, (_, i) =>
+        engine.call('sim.run', { macro: { ...spec, human: spec.human && { ...spec.human, seed: i + 1 } }, scenario: { seed: i + 1 }, seconds }),
+      ),
     );
     return runs;
   },
@@ -236,7 +243,10 @@ const actions = {
     return shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${anchor}`);
   },
   openTestBench,
-  showFolder: ({ folder }) => shell.openPath(folder),
+  showFolder({ folder, create }) {
+    if (create) fs.mkdirSync(folder, { recursive: true });
+    return shell.openPath(folder);
+  },
 };
 
 // The control socket, for the `wick` CLI and MCP server.
@@ -246,6 +256,7 @@ async function startControl() {
     ensureSession: (target) => ensureSession(target),
     busyTarget: () => runningTarget,
     savedSettings: (id) => preferences().settings?.[id] ?? {},
+    inputPreferences: () => ({ ...DEFAULT_INPUT, ...preferences().input }),
     get libraryDir() {
       return libraryDir();
     },
@@ -318,6 +329,17 @@ async function smokeReport() {
   const smokeFolder = path.join(libraryDir(), 'smoke-test');
   shown.movedRegion = fs.existsSync(smokeFolder) ? library.readRegions(smokeFolder).area : null;
   shown.matches = await js(`document.getElementById('matchText').textContent`);
+  // Settings: changing precision saves it.
+  await js(`document.getElementById('openSettings').click()`);
+  await sleep(300);
+  await js(`(() => {
+    const f = document.getElementById('settingsDialogForm');
+    f.elements.precision.value = 70;
+    f.dispatchEvent(new Event('input'));
+  })()`);
+  await sleep(300);
+  shown.input = preferences().input;
+  if (process.env.WICK_SMOKE_DIALOG !== 'settings') await js(`document.getElementById('settingsDialog').close()`);
   // The CLI should reach this app over the control socket, not start its own engine.
   const cli = await new Promise((resolve) => {
     execFile(process.execPath, [path.join(root, 'bin', 'wick.js'), 'observe', '--target', 'sim', '--folder', smokeFolder], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }, (error, stdout, stderr) =>
@@ -337,7 +359,7 @@ async function smokeReport() {
   }
   const ok = errors.length === 0 && shown.engine === 'Engine running' && Boolean(shown.macro) && shown.previewDrawn &&
     shown.created === 'Smoke test' && shown.regions.includes('area') && shown.movedRegion?.x > 0 && /^[1-9]\d* px/.test(shown.matches) &&
-    shown.cli?.usedApp && shown.cli?.saved;
+    shown.cli?.usedApp && shown.cli?.saved && shown.input?.precision === 0.7;
   process.stdout.write(`WICK_SMOKE ${JSON.stringify({ ok, shown, errors })}\n`);
   app.exit(ok ? 0 : 1);
 }
@@ -368,9 +390,9 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       ...(process.platform === 'darwin'
-        ? [{ label: 'Wick', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }]
+        ? [{ label: 'Wick', submenu: [{ role: 'about' }, { type: 'separator' }, { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => forward('app.settings', {}) }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }]
         : []),
-      { label: 'File', submenu: [{ label: 'New Macro…', accelerator: 'CmdOrCtrl+N', click: () => forward('app.newMacro', {}) }, { label: 'Open Macro Folder…', accelerator: 'CmdOrCtrl+O', click: () => forward('app.openMacro', {}) }, { label: 'Open Test Bench', click: openTestBench }, { role: process.platform === 'darwin' ? 'close' : 'quit' }] },
+      { label: 'File', submenu: [{ label: 'New Macro…', accelerator: 'CmdOrCtrl+N', click: () => forward('app.newMacro', {}) }, { label: 'Open Macro Folder…', accelerator: 'CmdOrCtrl+O', click: () => forward('app.openMacro', {}) }, { label: 'Open Test Bench', click: openTestBench }, ...(process.platform === 'darwin' ? [] : [{ label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => forward('app.settings', {}) }]), { role: process.platform === 'darwin' ? 'close' : 'quit' }] },
       { role: 'editMenu' },
       { role: 'windowMenu' },
     ]),

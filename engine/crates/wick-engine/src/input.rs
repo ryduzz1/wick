@@ -9,6 +9,8 @@ use std::collections::HashSet;
 use serde::Deserialize;
 use wick_platform::MouseButton;
 
+use crate::human::{HumanProfile, Humanizer, Step};
+
 /// One OS-level action, in frame pixels where a position is involved.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
@@ -94,96 +96,126 @@ pub struct InputState {
     scheduled: Vec<(f64, Action)>,
     held_buttons: HashSet<MouseButton>,
     held_keys: HashSet<String>,
+    /// Makes input look like a person's; `None` sends it exactly.
+    human: Option<Humanizer>,
     pub sent: u64,
     pub dropped: u64,
 }
 
+fn step(at: f64, action: Action) -> Step {
+    Step { at, action }
+}
+
 impl InputState {
+    pub fn with_profile(profile: Option<HumanProfile>) -> Self {
+        InputState {
+            human: profile.map(Humanizer::new),
+            ..InputState::default()
+        }
+    }
+
     /// Expands a command into actions, now and later. `locate` maps a region
-    /// point to frame pixels.
+    /// point to frame pixels. `now` is ms since the run started.
     pub fn schedule(
         &mut self,
         cmd: Command,
         now: f64,
         locate: impl Fn(&At) -> Result<(f64, f64), String>,
     ) -> Result<(), String> {
-        let mut at = |t: f64, a: Action| self.scheduled.push((t, a));
-        match cmd {
+        let plan = match cmd {
             Command::Click {
                 button: b,
                 at: point,
                 hold,
             } => {
                 let b = button(&b)?;
+                let mut plan = Vec::new();
                 if let Some(point) = point {
                     let (x, y) = locate(&point)?;
-                    at(now, Action::MoveTo { x, y });
+                    plan.push(step(0.0, Action::MoveTo { x, y }));
                 }
-                at(
-                    now,
+                plan.push(step(
+                    0.0,
                     Action::Button {
                         button: b,
                         down: true,
                     },
-                );
-                at(
-                    now + hold.max(0.0),
+                ));
+                plan.push(step(
+                    hold.max(0.0),
                     Action::Button {
                         button: b,
                         down: false,
                     },
-                );
+                ));
+                plan
             }
-            Command::MouseDown { button: b } => at(
-                now,
-                Action::Button {
-                    button: button(&b)?,
-                    down: true,
-                },
-            ),
-            Command::MouseUp { button: b } => at(
-                now,
-                Action::Button {
-                    button: button(&b)?,
-                    down: false,
-                },
-            ),
+            Command::MouseDown { button: b } => {
+                vec![step(
+                    0.0,
+                    Action::Button {
+                        button: button(&b)?,
+                        down: true,
+                    },
+                )]
+            }
+            Command::MouseUp { button: b } => {
+                vec![step(
+                    0.0,
+                    Action::Button {
+                        button: button(&b)?,
+                        down: false,
+                    },
+                )]
+            }
             Command::Move { at: point } => {
                 let (x, y) = locate(&point)?;
-                at(now, Action::MoveTo { x, y });
+                vec![step(0.0, Action::MoveTo { x, y })]
             }
-            Command::Turn { dx, dy } => at(now, Action::Turn { dx, dy }),
+            Command::Turn { dx, dy } => vec![step(0.0, Action::Turn { dx, dy })],
             Command::Press { key: k, hold } => {
                 let k = key(&k)?;
-                at(
-                    now,
+                vec![
+                    step(
+                        0.0,
+                        Action::Key {
+                            name: k.clone(),
+                            down: true,
+                        },
+                    ),
+                    step(
+                        hold.max(0.0),
+                        Action::Key {
+                            name: k,
+                            down: false,
+                        },
+                    ),
+                ]
+            }
+            Command::KeyDown { key: k } => {
+                vec![step(
+                    0.0,
                     Action::Key {
-                        name: k.clone(),
+                        name: key(&k)?,
                         down: true,
                     },
-                );
-                at(
-                    now + hold.max(0.0),
+                )]
+            }
+            Command::KeyUp { key: k } => {
+                vec![step(
+                    0.0,
                     Action::Key {
-                        name: k,
+                        name: key(&k)?,
                         down: false,
                     },
-                );
+                )]
             }
-            Command::KeyDown { key: k } => at(
-                now,
-                Action::Key {
-                    name: key(&k)?,
-                    down: true,
-                },
-            ),
-            Command::KeyUp { key: k } => at(
-                now,
-                Action::Key {
-                    name: key(&k)?,
-                    down: false,
-                },
-            ),
+        };
+        match &mut self.human {
+            Some(human) => self.scheduled.extend(human.apply(plan, now, now)),
+            None => self
+                .scheduled
+                .extend(plan.into_iter().map(|s| (now + s.at, s.action))),
         }
         Ok(())
     }
@@ -196,6 +228,7 @@ impl InputState {
         focused: bool,
         send: &mut dyn FnMut(&Action) -> Result<(), String>,
     ) -> Result<(), String> {
+        // Stable, so actions planned for the same time keep their order.
         self.scheduled.sort_by(|a, b| a.0.total_cmp(&b.0));
         let due = self.scheduled.iter().take_while(|(t, _)| *t <= now).count();
         for (_, action) in self.scheduled.drain(..due).collect::<Vec<_>>() {

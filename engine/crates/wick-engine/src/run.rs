@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 use crate::frame::{Frame, Rect};
+use crate::human::HumanProfile;
 use crate::input::{At, Command, InputState};
 use crate::region::RegionSpec;
 use crate::runtime::{MacroRuntime, Status};
@@ -29,6 +30,9 @@ pub struct MacroSpec {
     pub regions: HashMap<String, RegionSpec>,
     #[serde(default)]
     pub settings: Value,
+    /// How human the input looks. Missing means exact input.
+    #[serde(default)]
+    pub human: Option<HumanProfile>,
 }
 
 fn default_entry() -> String {
@@ -101,12 +105,13 @@ impl MacroRun {
             &spec.entry,
             &json!({ "settings": settings, "latency": target.latency() }),
         )?;
+        let input = InputState::with_profile(spec.human.clone());
         Ok(MacroRun {
             permissions: spec.permissions.iter().cloned().collect(),
             spec,
             runtime,
             trackers: Vec::new(),
-            input: InputState::default(),
+            input,
             started_ms: target.now_ms(),
             viewport: target.viewport(),
             loops: 0,

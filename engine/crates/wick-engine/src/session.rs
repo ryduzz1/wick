@@ -418,6 +418,7 @@ mod tests {
                 },
             )]),
             settings: json!({}),
+            human: None,
         }
     }
 
@@ -439,6 +440,31 @@ mod tests {
             .collect();
         let avg = scores.iter().sum::<f64>() / scores.len() as f64;
         assert!(avg > 0.85, "scores {scores:?}");
+    }
+
+    #[test]
+    fn human_input_still_keeps_the_tick_in_the_zone() {
+        let scores: Vec<f64> = (1..=5)
+            .map(|seed| {
+                let mut spec = spec(CONTROLLER, &["mouse.click"]);
+                spec.human = Some(crate::human::HumanProfile {
+                    precision: 0.85,
+                    seed,
+                });
+                let r = run_headless(
+                    spec,
+                    Scenario {
+                        seed,
+                        ..Scenario::default()
+                    },
+                    20.0,
+                )
+                .unwrap();
+                r["score"]["inZone"].as_f64().unwrap()
+            })
+            .collect();
+        let avg = scores.iter().sum::<f64>() / scores.len() as f64;
+        assert!(avg > 0.8, "scores {scores:?}");
     }
 
     #[test]

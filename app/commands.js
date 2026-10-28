@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import * as library from './library.js';
 import { writeAgentGuide } from './library.js';
-import { loadMacro, MacroError, TARGETS } from './macro-loader.js';
+import { DEFAULT_INPUT, loadMacro, MacroError, TARGETS } from './macro-loader.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -74,6 +74,7 @@ function readManifest(folder) {
  * @param {(target: string) => Promise<void>} host.ensureSession  points the engine's session at a target
  * @param {() => string|null} [host.busyTarget]  the target a macro is running on, if any
  * @param {(id: string) => object} [host.savedSettings]  the user's settings for a macro id
+ * @param {() => object} [host.inputPreferences]  the app's human input preference
  * @param {string} [host.libraryDir]
  * @param {(event: string, data: object) => void} [host.notify]  tells the app what an agent did
  */
@@ -82,6 +83,8 @@ export function createCommands(host) {
   const notify = host.notify ?? (() => {});
   let lastRun = null;
   let activeRun = null;
+  // Runs use the app's input preference; `exact` turns the human profile off.
+  const inputFor = (exact) => (exact ? { human: false } : (host.inputPreferences?.() ?? DEFAULT_INPUT));
 
   const macroInfo = (folder) => {
     if (!folder) return { regions: {} };
@@ -244,11 +247,11 @@ export function createCommands(host) {
       return { removed: name };
     },
 
-    async run({ folder, target, seconds, settings, live = false, scenario } = {}) {
+    async run({ folder, target, seconds, settings, live = false, exact = false, scenario } = {}) {
       if (!folder) throw new MacroError('Run needs a macro folder.');
       const t = pickTarget(target, folder);
       const manifest = readManifest(folder);
-      const spec = await loadMacro(folder, { settings: settings ?? host.savedSettings?.(manifest?.id) ?? {} });
+      const spec = await loadMacro(folder, { settings: settings ?? host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact) });
       if (t === 'sim' && !live) {
         const result = await engine.call('sim.run', { macro: spec, scenario, seconds: Number(seconds ?? 30) });
         lastRun = { target: t, folder, at: new Date().toISOString(), ...result };
@@ -275,13 +278,16 @@ export function createCommands(host) {
       }
     },
 
-    async simulate({ folder, seeds = 5, seconds = 30, settings } = {}) {
+    async simulate({ folder, seeds = 5, seconds = 30, settings, exact = false } = {}) {
       if (!folder) throw new MacroError('Simulate needs a macro folder.');
       const manifest = readManifest(folder);
-      const spec = await loadMacro(folder, { settings: settings ?? host.savedSettings?.(manifest?.id) ?? {} });
+      const spec = await loadMacro(folder, { settings: settings ?? host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact) });
       const n = Math.max(1, Math.min(50, Number(seeds)));
+      // Each game gets its own input seed, so results repeat run to run.
       const runs = await Promise.all(
-        Array.from({ length: n }, (_, i) => engine.call('sim.run', { macro: spec, scenario: { seed: i + 1 }, seconds: Number(seconds) })),
+        Array.from({ length: n }, (_, i) =>
+          engine.call('sim.run', { macro: { ...spec, human: spec.human && { ...spec.human, seed: i + 1 } }, scenario: { seed: i + 1 }, seconds: Number(seconds) }),
+        ),
       );
       const scores = runs.map((r) => r.score?.inZone ?? 0);
       const errors = runs.filter((r) => r.end?.reason === 'error').map((r) => r.end.error);

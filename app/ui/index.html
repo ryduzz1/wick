@@ -15,6 +15,7 @@
     <button id="openMacro" class="sidebar-action"><span data-icon="folder"></span>Open macro folder<span class="shortcut" id="openShortcut">⌘ O</span></button>
     <div id="macroList" class="macro-list"></div>
     <div class="sidebar-bottom">
+      <button id="openSettings" class="sidebar-action"><span data-icon="sliders"></span>Settings<span class="shortcut" id="settingsShortcut">⌘ ,</span></button>
       <div id="engineStatus" class="engine-status">
         <span id="engineDot" class="dot"></span>
         <span><b id="engineLabel">Starting engine…</b><small id="engineSub"></small></span>
@@ -151,6 +152,21 @@
       <label>Name<input name="name" type="text" maxlength="80" placeholder="Fishing loop" required></label>
       <label>Target<select name="target"><option value="roblox">Roblox</option><option value="testbench">Test bench</option><option value="sim">Simulator</option></select></label>
       <div class="actions end"><button value="cancel" formnovalidate>Cancel</button><button value="create" class="primary">Create</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" id="settingsDialogForm">
+      <h2>Settings</h2>
+      <h3 class="dialog-section">Input</h3>
+      <label class="check-row"><input name="human" type="checkbox"> Human-like input</label>
+      <p class="small">Adds a short, varied reaction delay, varied hold times, curved mouse moves that slow near the target, and turns spread over a few steps. Agent tests (probe, act) always send exact input.</p>
+      <label class="range-label" id="precisionLabel">Precision <b id="precisionText">85</b><input name="precision" type="range" min="0" max="100" step="1"></label>
+      <p class="small">Higher is tighter and quicker. Lower it for slower, looser input; keep it high for timing minigames.</p>
+      <h3 class="dialog-section">Library</h3>
+      <p id="libraryFolder" class="small mono-path"></p>
+      <div class="actions"><button type="button" id="chooseLibrary" class="small-button">Change…</button><button type="button" id="showLibrary" class="small-button quiet">Show folder</button></div>
+      <div class="actions end"><button value="close" class="primary">Done</button></div>
     </form>
   </dialog>
 

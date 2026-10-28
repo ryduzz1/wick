@@ -1,6 +1,7 @@
 //! The Wick engine: targets, vision, input and the macro runtime.
 
 pub mod frame;
+pub mod human;
 pub mod input;
 pub mod probe;
 pub mod region;
