@@ -32,28 +32,41 @@ Built as one large pass:
 - The app smoke test opens the window, runs the example on the simulator and draws the live view.
 - **Not yet tested by hand:** real capture and input on macOS (test bench and Roblox), and everything on Windows.
 
+### Pass 2: Library and editor (planned pass 5)
+
+- **Library:** macros in a library folder (default `~/Documents/Wick`), plus folders you open and the bundled examples, grouped in the sidebar. **New macro** (⌘N) creates one from a starter template; **Make a copy** turns an example into your own; library macros move to the Trash, opened ones are removed from the list.
+- **Live view editor:** select, drag and resize regions on the captured frame, draw new ones (the anchor is picked from where you draw), and pick colors from the frame. Matching pixels for the current color are tinted ember, with a count.
+- **Panels:** regions (rename, change anchor without moving, delete), color (hex, tolerance, a ready-to-paste `screen.track` line), and macro details (name, description, target, permissions).
+- **Live reload:** the app watches the macro folder, so edits from an editor or an agent show up right away. **Edit code** opens the entry file.
+- New macros include `wick.d.ts` and a `tsconfig.json` so editors type-check them.
+- One accent color throughout (ember), and the logo matches Fuse's style.
+
+**Verification:** library tests (create, copy, region validation and rounding, manifest edits) and region-math tests that check the UI's conversion against the engine's. The app smoke test now creates a macro through the dialog, drags its region on the live view, checks the saved `regions.json`, and checks color matches.
+
+### Pass 3: Agent tools (planned pass 6)
+
+- **Engine:** `session.probe` (follow colors while sending timed input, returning each tracker's track over time), `sim.probe` (the same on the simulator, instantly), `session.detect` (matches plus a palette of the region's main colors, and a mask image), cropped `session.snapshot`, and `session.act` for single inputs. Agent input is focus-gated and released by the kill switch like a macro's.
+- **Command layer** (`app/commands.js`) shared by the app's control socket, the `wick` CLI and the MCP server: status, observe, detect, act, probe, regions, run, simulate, telemetry, stop, new, init.
+- **Control socket:** the app serves the commands on a user-only Unix socket (a named pipe on Windows), so agents work through the open app and their actions appear in its window and log. Without the app, the CLI starts its own engine.
+- **`wick mcp`:** the same tools over MCP, with screenshots and masks returned as images.
+- **Agent files:** every new or copied macro gets `AGENTS.md`, `CLAUDE.md` and `.mcp.json`.
+
+**Verification:** probe tests measure the simulator's drift and click push within 5% of the true values (the pass's target). Agent tests cover input normalization, CLI parsing, detect, observe, probe, act, regions, run, simulate and telemetry on `sim`, the control socket, the MCP server end to end (including image results), and CLI errors. The app smoke test runs the CLI against the open app and checks it used the app's engine.
+
+## Still to test by hand
+
+Kept for the end-to-end test once the app is finished:
+
+- macOS: capture and input on the test bench and in Roblox; F8 from another app; the permission prompts on a fresh install.
+- The live view editor on a real window: drag, resize, draw and color picking.
+- Agent tools on a real window: `observe`, `detect`, `probe` and `act` on the test bench; Claude Code building a macro from a new folder.
+- Everything on Windows.
+
 ## Build plan
 
-Left over from passes 1–4, to fold into the passes below: a `dist:dir` packaged build, `template` and `similar` detectors and a PNG fixture set, measured (rather than fixed) input latency on real windows, and a per-frame detector benchmark.
+Left over from passes 1–4, to fold into the passes below: a `dist:dir` packaged build, `template` and `similar` detectors and a PNG fixture set, measured (rather than fixed) input latency on real windows, a per-frame detector benchmark, and choosing the library folder in the app.
 
-### Pass 5: App shell
-
-- Library: list, open, create, delete, and settings per macro, with a library folder you choose (default `~/Documents/Wick`).
-- Macro page: Run and Stop, run states, stat tiles, the macro's settings form, and a run log.
-- Live view: the captured frame with region, mask and tracker overlays; drag and resize regions.
-- Kill-switch chip and toasts.
-
-**Checks:** Node tests for the library and settings storage; a smoke test that launches the app and runs the example on `sim`. Manual: create a macro, draw a region on the test bench, run and stop it.
-
-### Pass 6: Agent tools
-
-- `wick` CLI and `wick mcp` (MCP over stdio), both talking to the app through the local socket.
-- Commands: `observe`, `act`, `probe`, `detect preview`, `region set`, `run`, `stop`, `telemetry`.
-- A generated `AGENTS.md` and `CLAUDE.md` in every macro folder.
-
-**Checks:** CLI tests against `sim`, including a `probe` that measures drift speed and click push within 5% of the simulation's true values. Manual: ask Claude Code, started in a new macro folder, to build the bar-minigame macro from scratch on the test bench.
-
-### Pass 7: Recording and traces
+### Pass 4: Recording, traces and human-like input (planned passes 7 and 8)
 
 - `record`: PNG keyframes, change detection, and synchronized input and tracker logs (JSONL).
 - Trace graphs in the app, for live runs, recordings and run logs.
@@ -61,14 +74,14 @@ Left over from passes 1–4, to fold into the passes below: a `dist:dir` package
 
 **Checks:** tests that a sim recording's trace matches the simulation's ground truth. Manual: record a clip of the test bench and view its trace.
 
-### Pass 8: Human profile
+#### Human profile
 
 - Reaction delay spread, timing and hold jitter, curved mouse paths with overshoot, occasional mistakes, slow drift over a session, and the precision slider.
 - Profiles applied to every output, with a "raw" option for testing.
 
 **Checks:** statistical tests that sampled delays and paths match their configured distributions; the example macro still passes at precision 0.85 on `sim`. Manual: watch mouse paths in the test bench.
 
-### Pass 9: State machines, looping and the Roblox target's extras
+### Pass 5: State machines, looping and the Roblox target's extras
 
 - `states()` API: each state with a check, a timeout and a recovery step; `loop.repeat(n)`, with 0 meaning forever.
 - Start-point snapshot and check before every loop.
@@ -77,7 +90,7 @@ Left over from passes 1–4, to fold into the passes below: a `dist:dir` package
 
 **Checks:** sim tests with injected failures (zone disappears, "disconnect") that verify recovery. Manual: a looping macro in a real game that allows macros, including a forced reset.
 
-### Pass 10: Sharing
+### Pass 6: Sharing
 
 - `wick pack` and Export: `.wick` files with a content hash.
 - Install from a file, a `wick://install` link, or a GitHub repo or Gist URL.
@@ -86,7 +99,7 @@ Left over from passes 1–4, to fold into the passes below: a `dist:dir` package
 
 **Checks:** tests for pack and install round trips, tampered-package rejection, and settings kept across updates. Manual: export a macro, install it on another account or machine, and calibrate it.
 
-### Pass 11: Polish
+### Pass 7: Polish and release (planned passes 11 and 12)
 
 - The mini window over Roblox.
 - OCR (Vision on macOS, Windows.Media.Ocr on Windows).
@@ -94,7 +107,7 @@ Left over from passes 1–4, to fold into the passes below: a `dist:dir` package
 
 **Checks:** OCR fixture tests. Manual: a full first-run walkthrough on both platforms.
 
-### Pass 12: Release
+#### Release
 
 - Signed and notarized macOS build, Windows installer, auto-update, engine bundled with the app.
 - Release script and `docs/RELEASING.md`, as in Fuse.

@@ -748,6 +748,30 @@ wick.onEvent((method, params) => {
     case 'app.newMacro':
       newMacro();
       break;
+    case 'agent.target':
+      if (!state.running && params.target !== state.target) {
+        state.target = params.target;
+        renderTargets();
+        clearLive();
+      }
+      break;
+    case 'agent.log':
+      log(params.text);
+      break;
+    case 'agent.library':
+      showMacro(params.folder);
+      break;
+    case 'agent.run': {
+      const m = state.macros.find((x) => x.folder === params.folder);
+      if (m && state.selected?.folder !== m.folder) select(m);
+      state.target = params.target;
+      renderTargets();
+      state.running = { folder: params.folder, target: params.target };
+      state.lastStats = null;
+      setRunState('running', 'Started by an agent');
+      log(`An agent started ${m?.name ?? 'a macro'} on ${TARGET_LABELS[params.target]}.`);
+      break;
+    }
   }
 });
 

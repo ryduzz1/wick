@@ -106,6 +106,43 @@ impl Frame {
         (w, h, out)
     }
 
+    /// A copy of one rectangle of the frame.
+    pub fn crop(&self, rect: Rect) -> Frame {
+        let (x0, y0, x1, y1) = rect.pixel_bounds(self.width, self.height);
+        let (w, h) = (
+            (x1 - x0).max(1).min(self.width),
+            (y1 - y0).max(1).min(self.height),
+        );
+        let (x0, y0) = (x0.min(self.width - w), y0.min(self.height - h));
+        let mut data = Vec::with_capacity(w * h * 4);
+        for y in y0..y0 + h {
+            data.extend_from_slice(
+                &self.data[y * self.stride + x0 * 4..y * self.stride + (x0 + w) * 4],
+            );
+        }
+        Frame {
+            width: w,
+            height: h,
+            stride: w * 4,
+            data,
+        }
+    }
+
+    /// Paints pixels that match `q` ember and dims the rest, to show what a
+    /// color detector sees.
+    pub fn highlight(&mut self, q: &crate::vision::ColorQuery) {
+        let tol = i16::from(q.tolerance);
+        for px in self.data.as_chunks_mut::<4>().0 {
+            let rgb = [px[2], px[1], px[0]];
+            let hit = (0..3).all(|c| (i16::from(rgb[c]) - i16::from(q.rgb[c])).abs() <= tol);
+            *px = if hit {
+                [0x4b, 0x8a, 0xf0, 255]
+            } else {
+                [px[0] / 3, px[1] / 3, px[2] / 3, 255]
+            };
+        }
+    }
+
     /// Encodes the frame as a PNG file.
     pub fn write_png(&self, path: &std::path::Path) -> Result<(), String> {
         let file = std::fs::File::create(path).map_err(|e| e.to_string())?;

@@ -2,6 +2,7 @@
 
 pub mod frame;
 pub mod input;
+pub mod probe;
 pub mod region;
 pub mod rpc;
 pub mod run;

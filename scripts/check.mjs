@@ -24,7 +24,7 @@ const manifest = join(root, 'engine', 'Cargo.toml');
 run('cargo fmt', 'cargo', ['fmt', '--manifest-path', manifest, '--all', '--check']);
 run('cargo clippy', 'cargo', ['clippy', '--manifest-path', manifest, '--all-targets', '--', '-D', 'warnings']);
 
-const scripts = ['app', 'app/ui', 'scripts', 'tests'].flatMap((dir) =>
+const scripts = ['app', 'app/ui', 'bin', 'scripts', 'tests'].flatMap((dir) =>
   readdirSync(join(root, dir))
     .filter((f) => /\.(m?js|cjs)$/.test(f))
     .map((f) => join(root, dir, f)),

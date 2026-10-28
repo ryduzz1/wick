@@ -1,8 +1,11 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, shell } from 'electron';
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EngineClient, enginePath } from './engine-client.js';
+import { createCommands } from './commands.js';
+import { serve } from './control.js';
 import * as library from './library.js';
 import { checkManifest, loadMacro, MacroError } from './macro-loader.js';
 
@@ -20,6 +23,8 @@ let bench = null;
 let sessionTarget = null;
 let askedForPermissions = false;
 let macroWatcher = null;
+// The target a macro is running on, from the engine's events.
+let runningTarget = null;
 // Macro folders shown in the app: the bundled examples plus any the user opened.
 const preferencesPath = () => path.join(app.getPath('userData'), 'preferences.json');
 
@@ -234,6 +239,25 @@ const actions = {
   showFolder: ({ folder }) => shell.openPath(folder),
 };
 
+// The control socket, for the `wick` CLI and MCP server.
+async function startControl() {
+  const commands = createCommands({
+    engine,
+    ensureSession: (target) => ensureSession(target),
+    busyTarget: () => runningTarget,
+    savedSettings: (id) => preferences().settings?.[id] ?? {},
+    get libraryDir() {
+      return libraryDir();
+    },
+    notify: (event, data) => forward(`agent.${event}`, data),
+  });
+  try {
+    await serve(commands);
+  } catch (e) {
+    process.stderr.write(`Wick couldn't open its control socket, so the wick CLI will use its own engine: ${e.message}\n`);
+  }
+}
+
 async function dispatch(action, data) {
   const handler = actions[action];
   if (!handler) throw new Error(`Unknown action "${action}"`);
@@ -294,6 +318,17 @@ async function smokeReport() {
   const smokeFolder = path.join(libraryDir(), 'smoke-test');
   shown.movedRegion = fs.existsSync(smokeFolder) ? library.readRegions(smokeFolder).area : null;
   shown.matches = await js(`document.getElementById('matchText').textContent`);
+  // The CLI should reach this app over the control socket, not start its own engine.
+  const cli = await new Promise((resolve) => {
+    execFile(process.execPath, [path.join(root, 'bin', 'wick.js'), 'observe', '--target', 'sim', '--folder', smokeFolder], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }, (error, stdout, stderr) =>
+      resolve({ error: error?.message, stdout, stderr }),
+    );
+  });
+  try {
+    shown.cli = { usedApp: !/own engine/.test(cli.stderr), saved: fs.existsSync(JSON.parse(cli.stdout).path) };
+  } catch {
+    shown.cli = { error: cli.error ?? cli.stderr };
+  }
   if (process.env.WICK_SMOKE_SHOT) {
     if (process.env.WICK_SMOKE_SCROLL) await js(`document.querySelector('main').scrollTop = ${Number(process.env.WICK_SMOKE_SCROLL)}`);
     await sleep(100);
@@ -301,7 +336,8 @@ async function smokeReport() {
     fs.writeFileSync(process.env.WICK_SMOKE_SHOT, image.toPNG());
   }
   const ok = errors.length === 0 && shown.engine === 'Engine running' && Boolean(shown.macro) && shown.previewDrawn &&
-    shown.created === 'Smoke test' && shown.regions.includes('area') && shown.movedRegion?.x > 0 && /^[1-9]\d* px/.test(shown.matches);
+    shown.created === 'Smoke test' && shown.regions.includes('area') && shown.movedRegion?.x > 0 && /^[1-9]\d* px/.test(shown.matches) &&
+    shown.cli?.usedApp && shown.cli?.saved;
   process.stdout.write(`WICK_SMOKE ${JSON.stringify({ ok, shown, errors })}\n`);
   app.exit(ok ? 0 : 1);
 }
@@ -353,10 +389,13 @@ app.whenReady().then(async () => {
 
   engine.on('event', (method, params) => {
     if (method === 'session.stats' || method === 'preview') sessionTarget = params.target ?? sessionTarget;
+    if (method === 'macro.state' && params.state === 'running') runningTarget = sessionTarget;
+    if (method === 'macro.end') runningTarget = null;
     forward(method, params);
   });
   engine.on('exit', () => {
     sessionTarget = null;
+    runningTarget = null;
     forward('engine.exit', {});
   });
   engine.on('stderr', (text) => process.stderr.write(`[engine] ${text}`));
@@ -377,6 +416,7 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
+  startControl();
   if (smoke) smokeReport();
   try {
     engine.start();

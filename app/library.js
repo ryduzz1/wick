@@ -112,6 +112,7 @@ export function createMacro(dir, { name, target = 'roblox', author = defaultAuth
   fs.writeFileSync(path.join(folder, 'main.ts'), STARTER);
   fs.writeFileSync(path.join(folder, 'README.md'), `# ${title}\n\nWhat this macro does, which game it's for, and how to set it up.\n`);
   addEditorFiles(folder);
+  writeAgentGuide(folder);
   return folder;
 }
 
@@ -133,6 +134,7 @@ export function copyMacro(source, dir, { author = defaultAuthor() } = {}) {
     version: manifest.version ?? '0.1.0',
   });
   addEditorFiles(folder);
+  writeAgentGuide(folder);
   return folder;
 }
 
@@ -171,4 +173,83 @@ export function updateManifest(folder, changes) {
   }
   writeJson(file, manifest);
   return manifest;
+}
+
+const AGENT_GUIDE = `# Working on this Wick macro
+
+This folder is a [Wick](https://github.com/ryduzz1/wick) macro: \`wick.json\` (manifest), \`regions.json\` (screen regions), and the entry file (usually \`main.ts\`). The macro API is typed in \`wick.d.ts\`.
+
+You write the macro; you don't play the game. Use the \`wick\` CLI (or the Wick MCP server) from this folder. If \`wick\` isn't on the PATH, run it as \`{{CLI}}\`.
+
+| Command | What it does |
+| --- | --- |
+| \`wick status\` | Whether Wick, the engine and each target are available. |
+| \`wick observe [--region bar]\` | Saves a PNG of the target window (or one region) and prints its path. Look at it. |
+| \`wick detect --region bar [--color '#3ccf5a' --tolerance 30] [--mask]\` | The region's main colors, and where a color matches. \`--mask\` saves an image of the matches. |
+| \`wick regions\` / \`wick region set bar --anchor bottom-center --x 0 --y -0.18 --w 0.46 --h 0.06\` | List or edit regions. x/y place the center relative to the anchor; all four are in viewport heights. |
+| \`wick probe --track tick:bar:#ffffff --clicks 5 --every 300 --seconds 2\` | Follows colors while sending timed input; prints each tracker's position over time. Use it to measure speeds, how far an input moves things, and latency. |
+| \`wick act click [--at bar]\` / \`wick act press e\` | Sends one input to test something. |
+| \`wick run [--seconds 20]\` | Runs this macro and prints the result and its log. On the \`sim\` target it runs instantly. |
+| \`wick simulate [--seeds 5]\` | Runs this macro on several simulated games (bar minigame only). |
+| \`wick telemetry\` | The last run's result again. |
+| \`wick stop\` | Stops whatever is running. |
+
+Every command takes \`--target roblox|testbench|sim\` (default: the manifest's target) and prints JSON. The same tools are available over MCP (\`wick mcp\`, set up in \`.mcp.json\`) as \`wick_observe\`, \`wick_probe\` and so on; \`wick_observe\` returns the image directly.
+
+## Rules
+
+- Input only reaches the target window while it's focused. If a command says the window doesn't have focus, ask the user to click it.
+- F8 stops everything. Never try to work around it, and never touch the Roblox process: Wick only sees the screen and sends ordinary input.
+- Macros run in a sandbox with only the Wick API: no files, network or timers outside \`ctx\`.
+
+## How to approach a new game
+
+1. **Look:** \`observe\`, then draw regions around the moving parts (\`region set\`).
+2. **Detect:** \`detect\` each region to find the exact colors, and check matches with \`--mask\`.
+3. **Measure:** \`probe\` to get the mechanics as numbers instead of guessing.
+4. **Write** \`main.ts\` from those numbers.
+5. **Test:** \`run\` with a short limit, read the result and log, and fix what fails.
+6. **Wrap up:** fill in \`settings\`, \`permissions\` and \`README.md\`.
+`;
+
+/** Writes AGENTS.md and CLAUDE.md into a macro folder, leaving existing ones alone. */
+export function writeAgentGuide(folder) {
+  const written = [];
+  const agents = path.join(folder, 'AGENTS.md');
+  const claude = path.join(folder, 'CLAUDE.md');
+  if (!fs.existsSync(agents)) {
+    fs.writeFileSync(agents, AGENT_GUIDE.replace('{{CLI}}', cliCommand()));
+    written.push(agents);
+  }
+  if (!fs.existsSync(claude)) {
+    fs.writeFileSync(claude, '@AGENTS.md\n');
+    written.push(claude);
+  }
+  // Lets Claude Code (and other clients that read .mcp.json) find Wick's
+  // tools when started in this folder. It points at this machine's Wick, so
+  // it starts with a dot and is never included when a macro is shared.
+  const mcp = path.join(folder, '.mcp.json');
+  if (!fs.existsSync(mcp)) {
+    fs.writeFileSync(mcp, `${JSON.stringify({ mcpServers: { wick: mcpServer() } }, null, 2)}\n`);
+    written.push(mcp);
+  }
+  return written;
+}
+
+const BIN = fileURLToPath(new URL('../bin/wick.js', import.meta.url));
+
+/** The shell command for the CLI on this machine. */
+export function cliCommand() {
+  const quote = (s) => (/[\s"']/.test(s) ? `"${s}"` : s);
+  const env = process.versions.electron ? (process.platform === 'win32' ? 'set ELECTRON_RUN_AS_NODE=1 && ' : 'ELECTRON_RUN_AS_NODE=1 ') : '';
+  return `${env}${quote(process.execPath)} ${quote(BIN)}`;
+}
+
+/** How to start `wick mcp` on this machine: with Node, or with Electron acting as Node. */
+export function mcpServer() {
+  return {
+    command: process.execPath,
+    args: [BIN, 'mcp'],
+    ...(process.versions.electron ? { env: { ELECTRON_RUN_AS_NODE: '1' } } : {}),
+  };
 }

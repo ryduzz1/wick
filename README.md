@@ -8,7 +8,7 @@ Macros are small TypeScript programs packaged as folders. They are easy to share
 
 AI agents can write macros too. Wick gives an agent (Claude Code, or any agent that can run a command or use MCP) tools to look at the game, record clips, run small experiments ("click five times and track the white marker"), and read back the numbers. The agent works out how the game behaves, writes the macro, tests it, and iterates. The agent writes the macro; it doesn't play the game itself, so the macro runs at full speed without a model in the loop.
 
-> **Status:** early. The engine, the macro runtime, the simulator, the test bench and a first app window work; sharing, agent tools, recording and the human-like input profile are next. See the [roadmap](docs/ROADMAP.md).
+> **Status:** in development. The engine, macro runtime, simulator, test bench, the app with its library and region editor, and the agent tools (CLI and MCP) work. Recording, human-like input, looping and recovery, sharing and packaged builds are next. See the [roadmap](docs/ROADMAP.md).
 
 ## Run from source
 
@@ -26,6 +26,8 @@ npm start
 - **Roblox:** adjust the example's region and colors to your game first.
 
 On macOS, Wick asks for **Screen Recording** (to see the window) and **Accessibility** (to click and to catch F8 from any app). The simulator works without either. When running from source, macOS lists these under "Electron".
+
+To have Claude Code build a macro: in Wick, press **New macro**, then **Show folder**, start Claude Code in that folder and describe the macro. The folder includes the instructions and MCP setup it needs; see [Building with AI agents](docs/AI-AGENTS.md). `npm link` puts the `wick` command on your PATH.
 
 Other commands: `npm test` (engine and app tests on the simulator), `npm run test:engine` (Rust unit tests), `npm run check` (formatting, lints and syntax), `npm run smoke:app` (opens the app hidden and checks that it loads and draws).
 

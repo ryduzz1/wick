@@ -1,13 +1,17 @@
 //! `wick-engine`: the real-time half of Wick, driven by the app over stdio.
 
+use std::collections::HashMap;
 use std::io::BufRead;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
 use serde_json::{json, Value};
+use wick_engine::input::Command;
+use wick_engine::probe::{DetectSpec, ProbeSpec};
+use wick_engine::region::RegionSpec;
 use wick_engine::rpc::Emitter;
 use wick_engine::run::MacroSpec;
-use wick_engine::session::{run_headless, Msg, Session, TARGETS};
+use wick_engine::session::{probe_headless, run_headless, Msg, Session, TARGETS};
 use wick_engine::sim::Scenario;
 use wick_engine::window_target::WindowKind;
 
@@ -109,8 +113,25 @@ impl Engine {
             }
             "session.snapshot" => {
                 let path: std::path::PathBuf = param(params, "path")?;
+                let region: Option<RegionSpec> = param(params, "region")?;
                 let (tx, rx) = mpsc::channel();
-                self.with_session(|s| s.send(Msg::Snapshot(path, tx)))?;
+                self.with_session(|s| s.send(Msg::Snapshot(path, region, tx)))?;
+                rx.recv().map_err(|_| "The session stopped".to_string())?
+            }
+            "session.detect" => {
+                let spec: DetectSpec = serde_json::from_value(params.clone())
+                    .map_err(|e| format!("Bad detect request: {e}"))?;
+                let (tx, rx) = mpsc::channel();
+                self.with_session(|s| s.send(Msg::Detect(Box::new(spec), tx)))?;
+                rx.recv().map_err(|_| "The session stopped".to_string())?
+            }
+            "session.act" => {
+                let command: Command = param(params, "command")?;
+                let regions: Option<HashMap<String, RegionSpec>> = param(params, "regions")?;
+                let (tx, rx) = mpsc::channel();
+                self.with_session(|s| {
+                    s.send(Msg::Act(Box::new(command), regions.unwrap_or_default(), tx))
+                })?;
                 rx.recv().map_err(|_| "The session stopped".to_string())?
             }
             "macro.run" => {
@@ -189,6 +210,39 @@ fn main() {
             "shutdown" => {
                 emitter.reply(&id, Ok(json!({})));
                 break;
+            }
+            // Probes take seconds: wait for the result on another thread.
+            "session.probe" => {
+                let started = (|| {
+                    let spec: ProbeSpec = serde_json::from_value(params.clone())
+                        .map_err(|e| format!("Bad probe request: {e}"))?;
+                    let (tx, rx) = mpsc::channel();
+                    engine.with_session(|s| s.send(Msg::Probe(Box::new(spec), tx)))?;
+                    Ok::<_, String>(rx)
+                })();
+                match started {
+                    Ok(rx) => {
+                        let emitter = emitter.clone();
+                        std::thread::spawn(move || {
+                            let result = rx
+                                .recv()
+                                .unwrap_or_else(|_| Err("The session stopped".into()));
+                            emitter.reply(&id, result);
+                        });
+                    }
+                    Err(e) => emitter.reply(&id, Err(e)),
+                }
+            }
+            "sim.probe" => {
+                let emitter = emitter.clone();
+                std::thread::spawn(move || {
+                    let result = (|| {
+                        let spec: ProbeSpec = serde_json::from_value(params.clone())
+                            .map_err(|e| format!("Bad probe request: {e}"))?;
+                        probe_headless(spec, scenario(&params)?.unwrap_or_default())
+                    })();
+                    emitter.reply(&id, result);
+                });
             }
             // Headless runs can take seconds, so they get their own thread.
             "sim.run" => {

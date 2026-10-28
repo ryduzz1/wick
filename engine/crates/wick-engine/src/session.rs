@@ -10,7 +10,12 @@ use std::time::{Duration, Instant};
 use base64::Engine as _;
 use serde_json::{json, Value};
 
+use std::collections::HashMap;
+
 use crate::frame::Frame;
+use crate::input::{Command, InputState};
+use crate::probe::{self, DetectSpec, Probe, ProbeSpec};
+use crate::region::RegionSpec;
 use crate::rpc::Emitter;
 use crate::run::{MacroRun, MacroSpec, RunEnd};
 use crate::sim::{Scenario, SimTarget};
@@ -43,10 +48,17 @@ pub fn make_target(
     }
 }
 
+/// Where a session sends the answer to a request.
+pub type Reply = Sender<Result<Value, String>>;
+
 pub enum Msg {
     Run(Box<MacroSpec>, Sender<Result<(), String>>),
     StopMacro(String),
-    Snapshot(std::path::PathBuf, Sender<Result<Value, String>>),
+    Snapshot(std::path::PathBuf, Option<RegionSpec>, Reply),
+    Detect(Box<DetectSpec>, Reply),
+    /// One input from an agent, with the regions its position may refer to.
+    Act(Box<Command>, HashMap<String, RegionSpec>, Reply),
+    Probe(Box<ProbeSpec>, Reply),
     Close,
 }
 
@@ -123,6 +135,10 @@ fn session_loop(
     kills: Arc<AtomicU64>,
 ) {
     let mut run: Option<(MacroRun, u64)> = None;
+    let mut probe: Option<(Probe, Reply)> = None;
+    // Single inputs from agents, gated and released like a macro's.
+    let mut agent = InputState::default();
+    let mut agent_epoch = kills.load(Ordering::SeqCst);
     let mut last_frame: Option<Arc<Frame>> = None;
     let (mut last_preview, mut last_stats) = (Instant::now() - PREVIEW_EVERY, Instant::now());
     let (mut frames, mut busy) = (0u32, Duration::ZERO);
@@ -159,17 +175,44 @@ fn session_loop(
                         end_run(&mut r, RunEnd::Stopped(why), target.as_mut(), &emitter);
                     }
                 }
-                Msg::Snapshot(path, reply) => {
+                Msg::Snapshot(path, region, reply) => {
                     let result = match &last_frame {
-                        Some(f) => f.write_png(&path).map(|_| {
-                            json!({ "path": path, "width": f.width, "height": f.height,
-                                    "viewport": target.viewport() })
-                        }),
-                        None => Err("No frame has been captured yet".into()),
+                        Some(f) => probe::snapshot(f, target.viewport(), region.as_ref(), &path),
+                        None => Err(no_frame(target.as_mut())),
                     };
                     let _ = reply.send(result);
                 }
+                Msg::Detect(spec, reply) => {
+                    let result = match &last_frame {
+                        Some(f) => probe::detect(f, target.viewport(), &spec),
+                        None => Err(no_frame(target.as_mut())),
+                    };
+                    let _ = reply.send(result);
+                }
+                Msg::Act(command, regions, reply) => {
+                    let _ = reply.send(act(target.as_mut(), &mut agent, *command, &regions));
+                }
+                Msg::Probe(spec, reply) => {
+                    if run.is_some() || probe.is_some() {
+                        let _ = reply.send(Err(
+                            "Something is already running on this target. Stop it first.".into(),
+                        ));
+                    } else {
+                        match Probe::start(*spec, target.as_ref()) {
+                            Ok(p) => probe = Some((p, reply)),
+                            Err(e) => {
+                                let _ = reply.send(Err(e));
+                            }
+                        }
+                    }
+                }
                 Msg::Close => {
+                    if let Some((mut p, reply)) = probe.take() {
+                        p.abort(target.as_mut());
+                        let _ = reply.send(Err("The session closed".into()));
+                    }
+                    let focused = target.focused();
+                    agent.release_all(focused, &mut |a| target.send(a));
                     if let Some((mut r, _)) = run.take() {
                         end_run(
                             &mut r,
@@ -195,11 +238,40 @@ fn session_loop(
             }
         }
 
+        let epoch = kills.load(Ordering::SeqCst);
+        if epoch != agent_epoch {
+            agent_epoch = epoch;
+            let focused = target.focused();
+            agent.release_all(focused, &mut |a| target.send(a));
+            if let Some((mut p, reply)) = probe.take() {
+                p.abort(target.as_mut());
+                let _ = reply.send(Err("Stopped by the kill switch".into()));
+            }
+        }
+
         let frame = target.next_frame(FRAME_WAIT);
         let started = Instant::now();
         if frame.is_some() {
             frames += 1;
             last_frame = frame.clone();
+        }
+        {
+            let (now, focused) = (target.now_ms(), target.focused());
+            let _ = agent.flush(now, focused, &mut |a| target.send(a));
+        }
+        if let Some((p, _)) = &mut probe {
+            match p.tick(target.as_mut(), frame.as_deref()) {
+                Ok(None) => {}
+                Ok(Some(result)) => {
+                    let (_, reply) = probe.take().unwrap();
+                    let _ = reply.send(Ok(result));
+                }
+                Err(e) => {
+                    let (mut p, reply) = probe.take().unwrap();
+                    p.abort(target.as_mut());
+                    let _ = reply.send(Err(e));
+                }
+            }
         }
         if let Some((r, _)) = &mut run {
             if let Some(end) = r.tick(target.as_mut(), frame.as_deref(), &mut emit) {
@@ -236,6 +308,52 @@ fn session_loop(
             last_stats = Instant::now();
             frames = 0;
             busy = Duration::ZERO;
+        }
+    }
+}
+
+fn no_frame(target: &mut dyn Target) -> String {
+    let status = target.status();
+    match status["error"].as_str() {
+        Some(e) => format!("No frame yet: {e}"),
+        None if status["found"] == json!(false) => {
+            format!("No frame yet: the {} window isn't open.", target.id())
+        }
+        None => "No frame has been captured yet. Try again in a moment.".into(),
+    }
+}
+
+/// Sends one input from an agent, if the target has focus.
+fn act(
+    target: &mut dyn Target,
+    input: &mut InputState,
+    command: Command,
+    regions: &HashMap<String, RegionSpec>,
+) -> Result<Value, String> {
+    for (name, r) in regions {
+        r.validate(name)?;
+    }
+    if !target.focused() {
+        return Err(format!(
+            "Nothing was sent: the {} window doesn't have focus. Ask the user to click it, then try again.",
+            target.id()
+        ));
+    }
+    let (now, viewport) = (target.now_ms(), target.viewport());
+    input.schedule(command, now, |at| probe::locate(regions, viewport, at))?;
+    let before = input.sent;
+    input.flush(now, true, &mut |a| target.send(a))?;
+    Ok(json!({ "sent": input.sent - before }))
+}
+
+/// Runs a probe on the simulator as fast as possible.
+pub fn probe_headless(spec: ProbeSpec, scenario: Scenario) -> Result<Value, String> {
+    let mut target = SimTarget::new(scenario, false);
+    let mut probe = Probe::start(spec, &target)?;
+    loop {
+        let frame = target.next_frame(Duration::ZERO);
+        if let Some(result) = probe.tick(&mut target, frame.as_deref())? {
+            return Ok(result);
         }
     }
 }
