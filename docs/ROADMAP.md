@@ -113,7 +113,7 @@ Built as one large pass:
 - **Wick updates:** packaged builds check the latest GitHub release once per launch and show a sidebar notice linking to it.
 - Not done, and needing the maintainer: signing and notarizing (an Apple Developer ID and a Windows certificate) and silent auto-update, which on macOS requires a signed build. Not done: a universal (arm64 + x64) macOS build; `start.png` snapshots for start points.
 
-**Verification:** `npm run dist:dir` builds an unsigned `Wick.app` in about 7 s; `npm run smoke:dist` runs the full app smoke test against it (bundled engine, examples, asar paths, install and calibration) and the bundled `wick` command. The smoke test now also checks the mini window shows the running macro with "F8 to stop", and that the Get started card appears on a fresh profile. Screenshots of the mini window and Get started card checked by eye.
+**Verification:** `npm run dist:dir` builds an unsigned `Wick.app` in about 7 s; `npm run smoke:dist` runs the full app smoke test against it (bundled engine, examples, asar paths, install and calibration) and the bundled `wick` command. The smoke test now also checks the mini window shows the running macro with "F8 to stop", and that the Get started card appears on a fresh profile. Screenshots of the mini window and Get started card checked by eye. The first Release workflow run (by hand, unsigned) passed on macOS and Windows: tests, the installers (dmg/zip, NSIS/zip), and the packaged smoke test, which is the first time the whole app, install screen and mini window ran on Windows.
 
 ## Still to test by hand
 
