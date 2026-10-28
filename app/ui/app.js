@@ -684,6 +684,7 @@ async function run() {
 
 function ended(params) {
   if (!state.running) return;
+  if (state.running.target === 'sim') markTried();
   state.running = null;
   const end = params.end ?? {};
   const score = params.score ? `, ${pct(params.score.inZone)} in zone` : '';
@@ -757,6 +758,7 @@ async function refreshStatus() {
       ? 'Stops every macro. Works from any app.'
       : 'Stops every macro. F8 works while Wick is open; grant Accessibility so it works from any app.';
     renderTargets();
+    renderOnboarding();
   } catch {
     $('engineDot').className = 'dot red';
     $('engineLabel').textContent = 'Engine not running';
@@ -827,6 +829,14 @@ async function openSettings() {
   form.elements.precision.value = Math.round(input.precision * 100);
   renderPrecision();
   $('libraryFolder').textContent = info?.folder ?? '';
+  const prefs = await call('appPreferences').catch(() => null);
+  form.elements.miniWindow.checked = prefs?.miniWindow ?? true;
+  $('cliCommand').textContent = prefs?.cliScript ?? prefs?.cli ?? '';
+  $('cliHint').textContent = !prefs?.cliScript
+    ? 'This is a development run, so the command runs Wick from this checkout. Agents in a macro folder find it in AGENTS.md.'
+    : wick.platform === 'darwin'
+      ? `To type "wick" anywhere: ln -s "${prefs.cliScript}" /usr/local/bin/wick`
+      : 'To type "wick" anywhere, add this file\'s folder to your PATH.';
   $('settingsDialog').showModal();
 }
 
@@ -837,9 +847,13 @@ function renderPrecision() {
   $('precisionLabel').classList.toggle('disabled', !form.elements.human.checked);
 }
 
-$('settingsDialogForm').oninput = async () => {
+$('settingsDialogForm').oninput = async (e) => {
   renderPrecision();
   const form = $('settingsDialogForm');
+  if (e.target === form.elements.miniWindow) {
+    await call('saveAppPreferences', { miniWindow: form.elements.miniWindow.checked }).catch((err) => toast('Couldn\'t save settings', err.message, 'error'));
+    return;
+  }
   try {
     await call('saveInputPreferences', { human: form.elements.human.checked, precision: Number(form.elements.precision.value) / 100 });
   } catch (e) {
@@ -1175,6 +1189,57 @@ document.addEventListener('drop', (e) => {
   if (url) installFrom(url.trim());
 });
 
+// MARK: Onboarding and Wick updates
+
+let onboarding = false;
+
+function markTried() {
+  try {
+    localStorage.setItem('wick.triedSimulator', '1');
+  } catch {}
+  renderOnboarding();
+}
+
+function renderOnboarding() {
+  if (!onboarding) return;
+  const p = state.permissions;
+  $('stepPermissions').classList.toggle('done', Boolean(p?.screenRecording && p?.accessibility));
+  let tried = false;
+  try {
+    tried = localStorage.getItem('wick.triedSimulator') === '1';
+  } catch {}
+  $('stepExample').classList.toggle('done', tried);
+  $('stepRoblox').classList.toggle('done', Boolean(state.targets.roblox?.found));
+}
+
+function showOnboarding(show = true) {
+  onboarding = show;
+  $('onboarding').classList.toggle('hidden', !show);
+  renderOnboarding();
+  if (show) document.querySelector('main').scrollTop = 0;
+}
+
+$('onboardingDone').onclick = () => {
+  showOnboarding(false);
+  call('finishOnboarding').catch(() => {});
+};
+
+async function checkAppUpdate({ quiet = false } = {}) {
+  try {
+    const u = await call('checkAppUpdate', { auto: quiet });
+    $('appUpdate').classList.toggle('hidden', !u.available);
+    if (u.available) {
+      $('appUpdateTitle').textContent = `Wick ${u.latest} is out`;
+      $('appUpdateOpen').onclick = () => call('openRelease', { url: u.url });
+    }
+    if (!quiet) toast(u.available ? `Wick ${u.latest} is available` : 'Wick is up to date', u.available ? 'Download it from the release page; your macros, settings and calibration stay.' : `You have ${u.version}${u.latest ? ', the latest release' : ''}.`);
+  } catch (e) {
+    if (!quiet) toast('Couldn\'t check for updates', e.message, 'error');
+  }
+}
+
+$('checkAppUpdate').onclick = () => checkAppUpdate();
+
 // MARK: Wiring
 
 wick.onEvent((method, params) => {
@@ -1232,6 +1297,31 @@ wick.onEvent((method, params) => {
       break;
     case 'app.settings':
       openSettings();
+      break;
+    case 'app.run':
+      if (state.selected && !state.running && !$('runButton').disabled) run();
+      break;
+    case 'app.simulate':
+      if (state.selected && !state.running) simulate();
+      break;
+    case 'app.export':
+      exportSelected();
+      break;
+    case 'app.checkUpdate':
+      if (state.selected?.source?.url) checkUpdate();
+      else if (state.selected) toast('Nothing to check', 'This macro wasn\'t installed from a link.');
+      break;
+    case 'app.showFolder':
+      if (state.selected) call('showFolder', { folder: state.selected.folder });
+      break;
+    case 'app.editCode':
+      if (state.selected?.editable) call('editCode', { folder: state.selected.folder });
+      break;
+    case 'app.onboarding':
+      showOnboarding(true);
+      break;
+    case 'app.checkAppUpdate':
+      checkAppUpdate();
       break;
     case 'app.installMacro':
       openInstallSource();
@@ -1329,5 +1419,8 @@ setInterval(() => {
 }, 3000);
 await refreshStatus();
 await loadMacros();
+if (!(await call('onboarded').catch(() => true))) showOnboarding(true);
+// Once per launch, quietly: a notice in the sidebar if a newer Wick is out.
+setTimeout(() => checkAppUpdate({ quiet: true }), 8000);
 // A .wick file or wick:// link that opened Wick.
 for (const source of await call('takeInstallRequests').catch(() => [])) installFrom(source);

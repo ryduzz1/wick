@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Wick</title>
+  <link rel="stylesheet" href="mini.css">
+</head>
+<body>
+  <div class="mini">
+    <span id="dot" class="dot"></span>
+    <div class="text">
+      <b id="name"></b>
+      <span id="label">Starting…</span>
+    </div>
+    <div class="side">
+      <button id="stop" title="Stop the macro">Stop</button>
+      <small id="hotkey">F8 to stop</small>
+    </div>
+  </div>
+  <script type="module" src="mini.js"></script>
+</body>
+</html>

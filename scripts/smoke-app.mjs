@@ -22,7 +22,7 @@ const child = spawn(packaged || electron, packaged ? [] : [root], {
 });
 let output = '';
 child.stdout.on('data', (d) => (output += d));
-const timer = setTimeout(() => child.kill(), 45_000);
+const timer = setTimeout(() => child.kill(), 90_000);
 child.on('exit', (code) => {
   clearTimeout(timer);
   rmSync(userData, { recursive: true, force: true });

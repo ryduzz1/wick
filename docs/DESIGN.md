@@ -94,10 +94,11 @@ A compact row above the live view or in run results: loops, success rate, averag
 
 A small always-on-top panel shown over Roblox while a macro runs, so you don't need the main window:
 
-- About 260 × 64px, `#181818` at 92% opacity, 12px radius, draggable, remembers its position.
-- Macro name, the run state dot and label, loop count, and a Stop button.
-- The kill-switch hotkey in small text (for example `F8 to stop`).
-- Excluded from Wick's own capture so macros never see it.
+- 280 × 72px, `#181818` at 92% opacity, 12px radius, draggable, remembers its position (top right of the main display by default).
+- Macro name, the run state dot and label (time, loop count, current state), and a Stop button. Double-click the name to bring the main window back.
+- The kill-switch hotkey in small text (`F8 to stop`).
+- Never takes focus, so input keeps going to the game, and is excluded from every screen capture (Wick's included) so macros never see it.
+- Shown for runs on Roblox and the test bench, not the simulator; after a run it shows how it ended for a few seconds. Settings can turn it off.
 
 ### Kill-switch chip
 
@@ -105,7 +106,7 @@ Whenever a macro can send input, the top bar shows a chip with the hotkey (`F8 �
 
 ### Install screen
 
-For shared macros: the macro's name and author, the game, the README, the permissions as a plain-words list with an icon each, and the full source under "View code." Primary button: **Install**. A permission added in an update is marked "New."
+For shared macros: the app icon, the macro's name, version, author and target, its description, badges (whether the files match the package's hash, whether it updates an installed copy, how many new permissions it asks for), problems in soft red, the permissions as a plain-words list (a permission added in an update gets an ember dot and "new in this version"), the README as plain text, and every file, expandable to its source. Primary button: **Install** (or **Update**) in ember; it's disabled for a changed or broken package.
 
 ## Logo
 
@@ -125,3 +126,20 @@ The same system as Fuse's **f**: a lowercase Georgia bold italic **w**.
 - State is always given in words, never color alone.
 - Text keeps at least 4.5:1 contrast on its background; muted text is for secondary information only.
 - Every action has a keyboard shortcut or is reachable by tab, and the kill switch works whichever app is focused.
+
+## Keyboard shortcuts
+
+| Shortcut (macOS / Windows) | Action |
+| --- | --- |
+| ⌘N / Ctrl+N | New macro |
+| ⌘O / Ctrl+O | Open macro folder |
+| ⇧⌘I / Ctrl+Shift+I | Install macro |
+| ⌘R / Ctrl+R | Run |
+| ⌘. / Ctrl+. | Stop |
+| ⌘T / Ctrl+T | Test on simulator |
+| ⌘E / Ctrl+E | Export |
+| ⇧⌘E / Ctrl+Shift+E | Edit code |
+| ⇧⌘R / Ctrl+Shift+R | Show folder |
+| ⌘, / Ctrl+, | Settings |
+| Esc | Back to the Select tool on the live view |
+| F8 (from any app) | Stop every macro |

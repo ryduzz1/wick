@@ -1,0 +1,49 @@
+name: Release
+# Builds Wick for macOS and Windows.
+# - Run it by hand (Actions > Release > Run workflow) to get unsigned builds as artifacts.
+# - Push a tag like v0.2.0 to also upload them to a draft GitHub release.
+# Signing uses the secrets in docs/RELEASING.md when they're set; without them the builds are unsigned.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      - run: npm ci
+      - run: npm test
+      - name: Package
+        run: npm run dist -- ${{ startsWith(github.ref, 'refs/tags/v') && '--publish always' || '--publish never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CERTIFICATE || secrets.WIN_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CERTIFICATE_PASSWORD || secrets.WIN_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Smoke test the packaged app
+        run: npm run smoke:dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wick-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+          if-no-files-found: error

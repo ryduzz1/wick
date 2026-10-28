@@ -101,7 +101,7 @@ p { color: #a6a6a6; line-height: 1.6; margin: 0 0 14px; }
 .page-heading p { font-size: 12px; margin: 0; }
 
 .segmented { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: #1f1f1f; }
-.segmented button { border: 0; background: transparent; font-size: 12px; padding: 6px 11px; color: #bcbcbc; }
+.segmented button { border: 0; background: transparent; font-size: 12px; padding: 6px 11px; color: #bcbcbc; white-space: nowrap; }
 .segmented button:hover { background: #2c2c2c; }
 .segmented button[aria-checked="true"] { background: #3a3a3a; color: #fff; }
 
@@ -301,3 +301,20 @@ dialog.wide { width: 640px; max-height: calc(100vh - 60px); overflow: auto; }
 .cal-row .arrow { color: #6f6f6f; }
 .cal-row button { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .cal-row .same { color: #7d7d7d; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+/* Onboarding, app updates, settings extras */
+.onboarding h3 { margin: 0; }
+.steps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.steps li { display: flex; gap: 12px; align-items: flex-start; }
+.steps li .dot { margin-top: 5px; }
+.steps li.done .dot { background: var(--text); }
+.steps li.done b { color: var(--muted); }
+.steps b { display: block; font-weight: 500; font-size: 12.5px; margin-bottom: 2px; }
+.steps p { margin: 0; font-size: 12px; }
+.steps kbd { font-size: 10px; background: #303030; border: 1px solid #484848; border-radius: 5px; padding: 0 5px; color: #e6e6e6; }
+.app-update { display: flex; align-items: center; gap: 8px; border: 1px solid var(--ember); background: var(--ember-soft); border-radius: 8px; padding: 8px 8px 8px 11px; margin-bottom: 10px; }
+.app-update b { flex: 1; font-size: 11.5px; font-weight: 500; }
+dialog .snippet { margin-top: 8px; }
+dialog .snippet code { white-space: nowrap; }
+.hint-below { margin: 8px 0 0; }
+dialog code { font-size: 11px; }

@@ -17,6 +17,10 @@
     <div id="macroList" class="macro-list"></div>
     <div class="sidebar-bottom">
       <button id="openSettings" class="sidebar-action"><span data-icon="sliders"></span>Settings<span class="shortcut" id="settingsShortcut">⌘ ,</span></button>
+      <div id="appUpdate" class="app-update hidden">
+        <b id="appUpdateTitle"></b>
+        <button id="appUpdateOpen" class="small-button">Download</button>
+      </div>
       <div id="engineStatus" class="engine-status">
         <span id="engineDot" class="dot"></span>
         <span><b id="engineLabel">Starting engine…</b><small id="engineSub"></small></span>
@@ -41,6 +45,16 @@
           <button id="openPermissionSettings" class="primary small-button">Open System Settings</button>
           <button id="restartApp" class="small-button">Restart Wick</button>
         </div>
+      </section>
+
+      <section id="onboarding" class="notice onboarding hidden">
+        <div class="section-title"><h3>Get started with Wick</h3><button id="onboardingDone" class="quiet small-button">Got it</button></div>
+        <ol class="steps">
+          <li id="stepPermissions"><span class="dot"></span><div><b>Let Wick see and control the game</b><p>Wick needs Screen Recording to watch the game window and Accessibility to send input to it. It only sends input to the macro's game window while that window is focused.</p></div></li>
+          <li id="stepExample"><span class="dot"></span><div><b>Try an example on the simulator</b><p>Pick Fishing trip under Examples, choose Simulator and press Run. The simulator is a stand-in game, so nothing touches Roblox.</p></div></li>
+          <li id="stepRoblox"><span class="dot"></span><div><b>Run it on Roblox</b><p>Open a game, choose the Roblox target, and click the game window so it has focus. A small panel shows the run over the game. Press <kbd>F8</kbd> from anywhere to stop.</p></div></li>
+          <li><span class="dot"></span><div><b>Make your own</b><p>New macro starts a folder you can edit, or open it in Claude Code and describe the loop: Wick's agent tools let it watch the game, record you playing, and write the macro. Install macro opens ones other people share.</p></div></li>
+        </ol>
       </section>
 
       <section id="emptyView" class="welcome hidden">
@@ -187,9 +201,18 @@
       <p class="small">Adds a short, varied reaction delay, varied hold times, curved mouse moves that slow near the target, and turns spread over a few steps. Agent tests (probe, act) always send exact input.</p>
       <label class="range-label" id="precisionLabel">Precision <b id="precisionText">85</b><input name="precision" type="range" min="0" max="100" step="1"></label>
       <p class="small">Higher is tighter and quicker. Lower it for slower, looser input; keep it high for timing minigames.</p>
+      <h3 class="dialog-section">While a macro runs</h3>
+      <label class="check-row"><input name="miniWindow" type="checkbox"> Show the mini window over the game</label>
+      <p class="small">A small panel with the run state and Stop, shown on top of the game while a macro runs there. It never takes focus, and macros can't see it.</p>
       <h3 class="dialog-section">Library</h3>
       <p id="libraryFolder" class="small mono-path"></p>
       <div class="actions"><button type="button" id="chooseLibrary" class="small-button">Change…</button><button type="button" id="showLibrary" class="small-button quiet">Show folder</button></div>
+      <h3 class="dialog-section">Command line</h3>
+      <p class="small">The <code>wick</code> command and its MCP server give agents the same tools as this window.</p>
+      <div class="snippet"><code id="cliCommand"></code><button type="button" id="copyCli" class="quiet small-button"><span data-icon="copy"></span>Copy</button></div>
+      <p id="cliHint" class="small hint-below"></p>
+      <h3 class="dialog-section">About</h3>
+      <div class="actions"><button type="button" id="checkAppUpdate" class="small-button"><span data-icon="refresh"></span>Check for Wick updates</button></div>
       <div class="actions end"><button value="close" class="primary">Done</button></div>
     </form>
   </dialog>

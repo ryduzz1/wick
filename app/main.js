@@ -9,6 +9,7 @@ import { serve } from './control.js';
 import * as library from './library.js';
 import { Calibrations, colorsIn } from './calibration.js';
 import { checkManifest, DEFAULT_INPUT, loadMacro, MacroError } from './macro-loader.js';
+import { MiniWindow } from './mini-window.js';
 import * as sharing from './package.js';
 import { RunHistory } from './runs.js';
 
@@ -54,6 +55,10 @@ function exampleFolders() {
 
 let history = null;
 const runHistory = () => (history ??= new RunHistory(path.join(app.getPath('userData'), 'runs')));
+// Names of macros started here, by id, for the mini window.
+const runNames = new Map();
+let mini = null;
+const miniEnabled = () => preferences().miniWindow !== false;
 let calibrationStore = null;
 const calibrations = () => (calibrationStore ??= new Calibrations(path.join(app.getPath('userData'), 'calibration')));
 const calibrationFor = (id) => calibrations().get(id);
@@ -298,6 +303,25 @@ const actions = {
     sessionKey = null;
   },
   inputPreferences: () => ({ ...DEFAULT_INPUT, ...preferences().input }),
+  appPreferences: () => ({
+    miniWindow: miniEnabled(),
+    cli: library.cliCommand(),
+    // The packaged app ships a `wick` script to link onto PATH.
+    cliScript: app.isPackaged ? path.join(process.resourcesPath, 'bin', process.platform === 'win32' ? 'wick.cmd' : 'wick') : null,
+  }),
+  saveAppPreferences({ miniWindow }) {
+    savePreferences({ miniWindow: Boolean(miniWindow) });
+    if (!miniWindow) mini?.hide();
+    return actions.appPreferences();
+  },
+  // The automatic check only runs in the packaged app, never in development or smoke runs.
+  checkAppUpdate: ({ auto = false } = {}) => (auto && (!app.isPackaged || smoke) ? { version, latest: null, available: false } : checkAppUpdate()),
+  openRelease({ url }) {
+    if (!String(url).startsWith(RELEASES)) throw new Error('Not a Wick release page.');
+    return shell.openExternal(url);
+  },
+  onboarded: () => Boolean(preferences().onboarded),
+  finishOnboarding: () => Boolean(savePreferences({ onboarded: true })),
   runs: ({ id }) => runHistory().list(id),
   readRun: ({ id, file }) => runHistory().read(id, file),
   saveInputPreferences(input) {
@@ -307,6 +331,7 @@ const actions = {
   async run({ folder, target, settings }) {
     const spec = await loadMacro(folder, { settings, input: preferences().input, calibration: calibrationFor });
     await ensureSession(target, spec.simulator);
+    runNames.set(spec.id, spec.name);
     await engine.call('macro.run', { macro: spec });
     return { id: spec.id };
   },
@@ -357,6 +382,27 @@ async function startControl() {
   } catch (e) {
     process.stderr.write(`Wick couldn't open its control socket, so the wick CLI will use its own engine: ${e.message}\n`);
   }
+}
+
+// Wick's own updates: the latest GitHub release, compared with this version.
+// Wick only links to the release page; installing it stays with the user.
+const RELEASES = 'https://github.com/ryduzz1/wick/releases';
+
+const newer = (a, b) => {
+  const pa = String(a).replace(/^v/, '').split(/[.-]/).map(Number);
+  const pb = String(b).replace(/^v/, '').split(/[.-]/).map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+  return false;
+};
+
+async function checkAppUpdate() {
+  const response = await fetch('https://api.github.com/repos/ryduzz1/wick/releases/latest', { headers: { accept: 'application/vnd.github+json', 'user-agent': `wick/${version}` }, signal: AbortSignal.timeout(10_000) });
+  if (response.status === 404) return { version, latest: null, available: false };
+  if (!response.ok) throw new Error(`GitHub answered ${response.status}.`);
+  const release = await response.json();
+  const latest = String(release.tag_name ?? '').replace(/^v/, '');
+  const url = String(release.html_url ?? '').startsWith(RELEASES) ? release.html_url : `${RELEASES}/latest`;
+  return { version, latest, available: Boolean(latest) && newer(latest, version), url, notes: String(release.body ?? '').slice(0, 2000) };
 }
 
 // Installs waiting for the user to confirm on the install screen.
@@ -474,6 +520,9 @@ async function smokeReport() {
   await js(`document.getElementById('runButton').click()`);
   await sleep(process.env.WICK_SMOKE_DIALOG === 'trace' ? 6000 : 1500);
   shown.trace = await js(`({ visible: !document.getElementById('traceCard').classList.contains('hidden'), legend: document.getElementById('traceLegend').textContent })`);
+  shown.mini = await mini.text();
+  if (process.env.WICK_SMOKE_MINI) fs.writeFileSync(process.env.WICK_SMOKE_MINI, (await mini.window.webContents.capturePage()).toPNG());
+  shown.onboarding = await js(`!document.getElementById('onboarding').classList.contains('hidden')`);
   if (process.env.WICK_SMOKE_DIALOG !== 'trace') {
     await js(`document.getElementById('stopButton').click()`);
     await sleep(800);
@@ -552,10 +601,30 @@ async function smokeReport() {
   const ok = errors.length === 0 && shown.engine === 'Engine running' && Boolean(shown.macro) && shown.previewDrawn &&
     shown.created === 'Smoke test' && shown.regions.includes('area') && shown.movedRegion?.x > 0 && /^[1-9]\d* px/.test(shown.matches) &&
     shown.cli?.usedApp && shown.cli?.saved && shown.input?.precision === 0.7 && shown.trace?.visible && (process.env.WICK_SMOKE_DIALOG === 'trace' || shown.runs === 1) &&
+    /Smoke test/.test(shown.mini ?? '') && /F8 to stop/.test(shown.mini ?? '') && shown.onboarding &&
     shown.install.open && shown.install.name === 'Fishing trip' && shown.install.permissions > 0 && shown.install.files > 3 &&
     (process.env.WICK_SMOKE_DIALOG === 'install' || (shown.installed?.name === 'Fishing trip' && shown.installed.folder && shown.installed.calibration && shown.installed.colors > 0 && shown.installed.calibrated === 1));
   process.stdout.write(`WICK_SMOKE ${JSON.stringify({ ok, shown, errors })}\n`);
   app.exit(ok ? 0 : 1);
+}
+
+/** Shows the mini window over the game while a macro runs there (not on the simulator). */
+function updateMini(method, params) {
+  if (!mini) return;
+  if (method === 'macro.state' && params.state === 'running') {
+    const target = runningTarget ?? sessionTarget;
+    if (miniEnabled() && (target !== 'sim' || smoke)) mini.start({ name: runNames.get(params.id) ?? params.id?.split('/').pop() ?? 'Macro', target });
+  } else if (method === 'macro.stats') mini.update({ elapsed: params.elapsed, loops: params.loops ?? null });
+  else if (method === 'macro.step') mini.update({ step: params.state });
+  else if (method === 'session.stats' && params.target === runningTarget) mini.update({ found: params.found, focused: params.focused });
+  else if (method === 'macro.end') mini.end({ ...params.end }, params.elapsed);
+}
+
+function showMainWindow() {
+  if (!window) return createWindow();
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
 }
 
 function createWindow() {
@@ -580,6 +649,8 @@ function createWindow() {
   window.on('closed', () => {
     window = null;
     rendererReady = false;
+    // The hidden mini window would otherwise keep Wick open on Windows.
+    if (process.platform !== 'darwin') app.quit();
   });
 }
 
@@ -611,7 +682,28 @@ app.whenReady().then(async () => {
         : []),
       { label: 'File', submenu: [{ label: 'New Macro…', accelerator: 'CmdOrCtrl+N', click: () => forward('app.newMacro', {}) }, { label: 'Open Macro Folder…', accelerator: 'CmdOrCtrl+O', click: () => forward('app.openMacro', {}) }, { label: 'Install Macro…', accelerator: 'CmdOrCtrl+Shift+I', click: () => forward('app.installMacro', {}) }, { label: 'Open Test Bench', click: openTestBench }, ...(process.platform === 'darwin' ? [] : [{ label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => forward('app.settings', {}) }]), { role: process.platform === 'darwin' ? 'close' : 'quit' }] },
       { role: 'editMenu' },
+      {
+        label: 'Macro',
+        submenu: [
+          { label: 'Run', accelerator: 'CmdOrCtrl+R', click: () => forward('app.run', {}) },
+          { label: 'Stop', accelerator: 'CmdOrCtrl+.', click: () => engine.call('macro.stop').catch(() => {}) },
+          { label: 'Test on Simulator', accelerator: 'CmdOrCtrl+T', click: () => forward('app.simulate', {}) },
+          { type: 'separator' },
+          { label: 'Export…', accelerator: 'CmdOrCtrl+E', click: () => forward('app.export', {}) },
+          { label: 'Check for Updates', click: () => forward('app.checkUpdate', {}) },
+          { label: 'Show Folder', accelerator: 'CmdOrCtrl+Shift+R', click: () => forward('app.showFolder', {}) },
+          { label: 'Edit Code', accelerator: 'CmdOrCtrl+Shift+E', click: () => forward('app.editCode', {}) },
+        ],
+      },
       { role: 'windowMenu' },
+      {
+        role: 'help',
+        submenu: [
+          { label: 'Get Started', click: () => forward('app.onboarding', {}) },
+          { label: 'Check for Wick Updates…', click: () => forward('app.checkAppUpdate', {}) },
+          { label: 'Wick on GitHub', click: () => shell.openExternal('https://github.com/ryduzz1/wick') },
+        ],
+      },
     ]),
   );
 
@@ -630,6 +722,7 @@ app.whenReady().then(async () => {
     if (method === 'session.stats' || method === 'preview') sessionTarget = params.target ?? sessionTarget;
     if (method === 'macro.state' && params.state === 'running') runningTarget = sessionTarget;
     const saved = runHistory().onEvent(method, params, runningTarget ?? sessionTarget);
+    updateMini(method, params);
     if (method === 'macro.end') runningTarget = null;
     forward(method, params);
     if (saved) forward('runs.saved', { id: params.id });
@@ -657,6 +750,13 @@ app.whenReady().then(async () => {
     }
   });
 
+  mini = new MiniWindow({
+    directory,
+    position: () => preferences().miniPosition ?? null,
+    savePosition: (at) => savePreferences({ miniPosition: at }),
+    stop: () => engine.call('macro.stop').catch(() => {}),
+    showMain: showMainWindow,
+  });
   createWindow();
   startControl();
   if (smoke) smokeReport();
@@ -667,7 +767,7 @@ app.whenReady().then(async () => {
     dialog.showErrorBox('Wick engine missing', e.message);
   }
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!window) createWindow();
   });
 });
 
@@ -676,6 +776,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  mini?.destroy();
   globalShortcut.unregisterAll();
   engine.stop();
 });

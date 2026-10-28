@@ -1,0 +1,37 @@
+/* The mini window. Same tokens as styles.css; see docs/DESIGN.md#mini-window. */
+:root {
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-synthesis: none;
+  --text: #ececec;
+  --muted: #969696;
+  --ember: #f08a4b;
+  --red: #e8a89f;
+  --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: var(--text);
+}
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+.mini {
+  box-sizing: border-box; height: 100%; display: flex; align-items: center; gap: 11px; padding: 0 12px 0 14px;
+  background: rgba(24, 24, 24, .92); border: 1px solid #3a3a3a; border-radius: 12px; -webkit-app-region: drag;
+}
+.text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.text b { font-weight: 550; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.text span { color: var(--muted); font: 11px var(--mono); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.side small { font-size: 9.5px; color: #7d7d7d; }
+button {
+  -webkit-app-region: no-drag; font: inherit; font-size: 11px; cursor: pointer; color: #eee;
+  background: #303030; border: 1px solid #464646; border-radius: 7px; padding: 4px 12px;
+}
+button:hover { background: #404040; }
+button:disabled { opacity: .4; cursor: default; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #8c8c8c; flex-shrink: 0; position: relative; }
+.dot.ember { background: var(--ember); }
+.dot.on { background: var(--text); }
+.dot.red { background: var(--red); }
+.dot.pulse::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: pulse 1.6s ease-out infinite; }
+@keyframes pulse { from { transform: scale(1); opacity: .7; } to { transform: scale(3); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .dot.pulse::after { animation: none; } }
+.error { color: var(--red) !important; }

@@ -19,6 +19,8 @@ run(process.execPath, [join(root, 'scripts', 'build-engine.mjs')]);
 
 const args = process.argv.slice(2);
 const env = { ...process.env };
+// CI passes unset secrets as empty strings; electron-builder should see them as unset.
+for (const [key, value] of Object.entries(env)) if (value === '') delete env[key];
 const signing = process.platform === 'darwin' ? env.CSC_LINK || env.CSC_NAME : env.WIN_CSC_LINK || env.CSC_LINK;
 if (!signing) {
   env.CSC_IDENTITY_AUTO_DISCOVERY = 'false';

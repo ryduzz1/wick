@@ -102,6 +102,19 @@ Built as one large pass:
 
 **Verification:** 7 package tests (deterministic packing, tamper detection, unsafe paths and broken manifests, install then in-place update keeping local data and noting a new permission, link parsing, repos with several macros, package and Gist downloads with a fake fetch); Node tests through the command layer for pack/install/update and color calibration; the app smoke test exports the fishing trip, opens it on the install screen through the same path a double-clicked file takes, checks the badges, permissions and files, installs it, checks the library and Calibration card, and calibrates a color with the picker. Screenshots of the install screen and Calibration card checked by eye.
 
+### Pass 8: Polish and packaged builds
+
+- **Packaged builds:** electron-builder config in `package.json`; `npm run dist:dir` and `npm run dist` (via `scripts/dist.mjs`, which builds the engine and signs only when credentials are set). The app bundles the engine, the examples and a `wick` CLI script (`Resources/bin/wick`, `wick.cmd`), declares `wick://` and the `.wick` document type, and the engine path falls back to `process.resourcesPath` so the CLI and MCP server work from the packaged app without Node.
+- **Release workflow:** `.github/workflows/release.yml` builds, tests and smoke-tests the packaged app on macOS and Windows; by hand it uploads unsigned artifacts, on a `v*` tag it uploads to a draft release, and it signs and notarizes when the secrets in [RELEASING.md](RELEASING.md) exist.
+- **Mini window:** an always-on-top panel over the game during runs on Roblox or the test bench: name, state dot and label (time, loops, current state), Stop, `F8 to stop`. It's a non-activating panel that never takes focus, excluded from capture with content protection, remembers its position, shows how a run ended, and can be turned off in Settings.
+- **Shortcuts:** a Macro menu (Run ⌘R, Stop ⌘., Test on simulator ⌘T, Export ⌘E, Check for updates, Show folder, Edit code) and a Help menu (Get started, Check for Wick updates, GitHub). All listed in DESIGN.md.
+- **Onboarding:** a first-run Get started card (permissions, try an example on the simulator, run on Roblox, make your own with an agent) that ticks steps off as they happen; reopen it from Help.
+- **Settings:** mini window on or off, the `wick` command with how to put it on PATH, and Check for Wick updates.
+- **Wick updates:** packaged builds check the latest GitHub release once per launch and show a sidebar notice linking to it.
+- Not done, and needing the maintainer: signing and notarizing (an Apple Developer ID and a Windows certificate) and silent auto-update, which on macOS requires a signed build. Not done: a universal (arm64 + x64) macOS build; `start.png` snapshots for start points.
+
+**Verification:** `npm run dist:dir` builds an unsigned `Wick.app` in about 7 s; `npm run smoke:dist` runs the full app smoke test against it (bundled engine, examples, asar paths, install and calibration) and the bundled `wick` command. The smoke test now also checks the mini window shows the running macro with "F8 to stop", and that the Get started card appears on a fresh profile. Screenshots of the mini window and Get started card checked by eye.
+
 ## Still to test by hand
 
 Kept for the end-to-end test once the app is finished:
@@ -119,24 +132,18 @@ Kept for the end-to-end test once the app is finished:
 - `game.rejoin()` after a real disconnect: whether the `roblox://` link rejoins in the open client on macOS and Windows.
 - Sharing: export a macro, send it to another account or machine, and install it by double-clicking the `.wick`, by dropping it on Wick, and from a GitHub repo link; then update it from a newer push and check settings and calibration survive. (`wick://` links and double-click need the packaged build from Pass 8.)
 - Calibration on a real window: drag an installed macro's region to fit, pick a shifted color in the Calibration card, run it, and Reset.
+- The mini window over Roblox (windowed and fullscreen): it stays on top, clicking Stop doesn't break the game's focus for the next run, it doesn't show up in Wick's live view, and its position is remembered.
+- The packaged app: install the dmg (right-click → Open while unsigned) and the Windows installer, grant permissions to "Wick", double-click a `.wick`, open a `wick://install?url=` link, and run `Resources/bin/wick` / `wick.cmd` from a terminal.
 - Everything on Windows.
 
 ## Build plan
 
-Left over from earlier passes, to fold into the passes below: a `dist:dir` packaged build, measured (rather than fixed) input latency on real windows, and a per-frame detector benchmark.
+Left over from earlier passes: measured (rather than fixed) input latency on real windows, and a per-frame detector benchmark.
 
-### Pass 8: Polish and release (planned passes 11 and 12)
+### Release (needs the maintainer)
 
-- The mini window over Roblox.
-- Logo, icon, onboarding, empty states, keyboard shortcuts, and a full pass against [DESIGN.md](DESIGN.md).
-
-**Checks:** Manual: a full first-run walkthrough on both platforms.
-
-#### Release
-
-- Signed and notarized macOS build, Windows installer, auto-update, engine bundled with the app.
-- Declare the `wick` URL scheme and the `.wick` document type in the packaged app (Info.plist `CFBundleURLTypes` / `CFBundleDocumentTypes`, Windows file association), so double-clicked packages and links reach the handlers that already exist.
-- Release script and `docs/RELEASING.md`, as in Fuse.
+- A Developer ID certificate and notarization for macOS, and a Windows code-signing certificate (see [RELEASING.md](RELEASING.md)); then silent auto-update with electron-updater.
+- A universal macOS build (arm64 and x64 engines).
 
 **Checks:** a release build installs and runs on clean macOS and Windows machines.
 
