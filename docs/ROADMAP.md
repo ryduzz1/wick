@@ -3,6 +3,7 @@
 ## Done
 
 - Project setup: README, working agreement, and design docs for the architecture, the macro format and sharing, and agent tools. No code yet.
+- Visual design spec (`docs/DESIGN.md`): Fuse's base style, the ember accent, run states, live view, trace graphs, mini window and logo. Not implemented yet.
 
 ## Next, in order
 

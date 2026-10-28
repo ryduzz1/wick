@@ -36,6 +36,7 @@ Wick never opens, reads, writes or injects into the Roblox process. That is a ha
 - [Architecture](docs/ARCHITECTURE.md): how the app, the engine and the macro sandbox fit together.
 - [Macro format and sharing](docs/FORMAT.md): what a macro folder contains, `.wick` packages, permissions, calibration.
 - [Building with AI agents](docs/AI-AGENTS.md): the tools Wick gives agents and how an agent should approach a new game.
+- [Design](docs/DESIGN.md): the visual style, shared with Fuse plus Wick's ember accent and live views.
 - [Roadmap](docs/ROADMAP.md)
 
 ## License
