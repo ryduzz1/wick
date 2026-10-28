@@ -60,9 +60,66 @@ export interface Screen {
   track(region: string, options: TrackOptions): Tracker;
   /** Starts comparing a region to how it looks on the next frame. */
   similar(region: string, options?: { threshold?: number }): Similar;
+  /**
+   * Looks for a saved template (templates/NAME.png) in a region, `hz` times
+   * a second (default 10, up to 30). Scales with the window.
+   */
+  find(region: string, options: { template: string; threshold?: number; hz?: number }): Finder;
+  /**
+   * Reads text in a region with the system's text recognition, `hz` times a
+   * second (default 2, up to 5). Results arrive a little after each frame.
+   */
+  read(region: string, options?: { hz?: number; accurate?: boolean }): TextReader;
   /** Viewport size in frame pixels. */
   readonly width: number;
   readonly height: number;
+}
+
+export interface Finder {
+  readonly region: string;
+  readonly template: string;
+  readonly threshold: number;
+  /** Whether the best match scores at least `threshold` (default 0.8). */
+  readonly seen: boolean;
+  /** How well the best spot matches, 0 to 1; NaN before the first search. */
+  readonly score: number;
+  /** The match's center and size as fractions of the region; NaN or 0 when not seen. */
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  /** The match's center as a point for `input.click({ at })`, or null. */
+  readonly at: Point | null;
+}
+
+export interface TextLine {
+  text: string;
+  /** 0 to 1 (always 1 on Windows). */
+  confidence: number;
+  /** The line's box as fractions of the region. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface TextReader {
+  readonly region: string;
+  /** Whether a read has finished yet. */
+  readonly ready: boolean;
+  /** All the text, top to bottom, one line per line; "" until the first read. */
+  readonly text: string;
+  readonly lines: TextLine[];
+  /** Why the last read failed, if it did. */
+  readonly error: string | null;
+  /** Every number in the text, in order ("3/5" gives [3, 5]). */
+  readonly numbers: number[];
+  /** The first number in the text, or NaN. */
+  readonly number: number;
+  /** When the text was last read, in ms since the macro started. */
+  readonly at: number;
+  /** Whether the text contains `s`, ignoring case. */
+  has(s: string): boolean;
 }
 
 export type Button = "left" | "right" | "middle";

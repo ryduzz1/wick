@@ -1,6 +1,6 @@
 # Macro format and sharing
 
-> Format version 1. Folders, `wick.json`, `regions.json`, the entry file, settings, permissions and the simulator setup work today; templates, `start.png`, `.wick` packages, installing and calibration are planned. See the [roadmap](ROADMAP.md).
+> Format version 1. Folders, `wick.json`, `regions.json`, the entry file, settings, permissions and the simulator setup work today; templates and routes work too; `start.png`, `.wick` packages, installing and calibration are planned. See the [roadmap](ROADMAP.md).
 
 A macro is a folder. Everything needed to run it is inside, and everything personal to one user (calibration, settings, recordings) lives outside it. That split is what makes a macro shareable: you can zip the folder, send it, and the other person's copy behaves the same once calibrated to their screen.
 
@@ -9,7 +9,8 @@ bar-minigame/
   wick.json          manifest: name, version, game, permissions, settings
   main.ts            entry point
   regions.json       named screen regions, resolution-independent
-  templates/         images for template matching (PNG)
+  templates/         images for screen.find (PNG), with templates.json
+  routes/            routes for input.play, cut from recordings (JS)
   start.png          snapshot of the starting point (optional)
   README.md          shown on the install screen
 ```
@@ -55,6 +56,20 @@ Regions are stored relative to the Roblox viewport, not in pixels, so they survi
 ```
 
 `x` and `y` place the region's center relative to its anchor, and `w` and `h` give its size. All four are fractions of the viewport height, so a region keeps its shape on wide and narrow windows.
+
+## `templates/` and `templates.json`
+
+Each `templates/NAME.png` is an image `screen.find(region, { template: "NAME" })` looks for. `templates.json` records the window height each one was saved at, so it can be scaled to the window it runs in:
+
+```json
+{ "sell-button": { "viewportHeight": 1080, "region": "sellButton" } }
+```
+
+`wick template save NAME --region R` writes both. The app sends templates to the engine with the macro; macro code never reads files.
+
+## `routes/`
+
+Routes cut from recordings by `wick route --name NAME` are saved as `routes/NAME.js`, a module whose default export is the list of actions, so a macro imports them like any other file (`import toVendor from "./routes/to-vendor.js"`). See [API.md](API.md#routes).
 
 ## `main.ts`
 

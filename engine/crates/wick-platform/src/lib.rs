@@ -147,6 +147,35 @@ pub fn start_hotkey(
     imp::start_hotkey(code, on_press)
 }
 
+/// A line of text read from an image, with its box as fractions of the
+/// image from the top left.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct TextLine {
+    pub text: String,
+    /// 0 to 1, where the platform reports it (Windows doesn't: always 1).
+    pub confidence: f64,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+/// Reads text in a BGRA image with the system's text recognition (Vision on
+/// macOS, Windows.Media.Ocr on Windows). Slow next to a frame: call it off
+/// the frame loop. `accurate` trades speed for better results on macOS.
+pub fn read_text(
+    bgra: &[u8],
+    width: usize,
+    height: usize,
+    stride: usize,
+    accurate: bool,
+) -> Result<Vec<TextLine>, String> {
+    if width == 0 || height == 0 || bgra.len() < stride * height {
+        return Err("There's no image to read.".into());
+    }
+    imp::read_text(bgra, width, height, stride, accurate)
+}
+
 /// Opens a link with the system's handler for its scheme, as clicking it
 /// would. Callers check the scheme; this just hands it to the OS.
 pub fn open_url(url: &str) -> Result<(), String> {

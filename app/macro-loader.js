@@ -103,6 +103,27 @@ async function readJson(path, label) {
   }
 }
 
+/**
+ * The macro's templates for screen.find: templates/NAME.png, with the
+ * viewport height each was saved at in templates.json.
+ */
+export async function loadTemplates(folder) {
+  const meta = (await readJson(join(folder, 'templates.json'), 'templates.json')) ?? {};
+  let names = [];
+  try {
+    names = (await readdir(join(folder, 'templates'))).filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4));
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+  }
+  const out = {};
+  for (const name of names) {
+    const height = Number(meta[name]?.viewportHeight);
+    if (!(height > 0)) fail(`templates.json needs a "viewportHeight" for "${name}" (the window height it was saved at). Save templates with "wick template save".`);
+    out[name] = { png: (await readFile(join(folder, 'templates', `${name}.png`))).toString('base64'), viewportHeight: height };
+  }
+  return out;
+}
+
 /** The app's input preference when nothing is saved: human-like, fairly precise. */
 export const DEFAULT_INPUT = { human: true, precision: 0.85 };
 
@@ -139,6 +160,7 @@ export async function loadMacro(folder, { settings: overrides, input } = {}) {
     settings: resolveSettings(manifest, overrides),
     human: humanProfile(input),
     game: manifest.game ?? {},
+    templates: await loadTemplates(folder),
     simulator: manifest.simulator ?? null,
     manifest,
   };

@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import * as library from './library.js';
 import { writeAgentGuide } from './library.js';
-import { DEFAULT_INPUT, loadMacro, MacroError, TARGETS } from './macro-loader.js';
+import { DEFAULT_INPUT, loadMacro, loadTemplates, MacroError, TARGETS } from './macro-loader.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -200,14 +200,63 @@ export function createCommands(host) {
       return { target: t, region: region ?? null, ...result };
     },
 
-    async detect({ folder, target, region, color, tolerance, minPixels, mask } = {}) {
+    async detect({ folder, target, region, color, tolerance, minPixels, mask, template, scenario } = {}) {
       const t = pickTarget(target, folder);
       const { regions } = macroInfo(folder);
       const spec = regionFor(region, regions);
-      await onTarget(t, readManifest(folder)?.simulator);
+      let tpl;
+      if (template) {
+        tpl = (await loadTemplates(folder))[template];
+        if (!tpl) throw new MacroError(`There's no template "${template}". Save one with "wick template save ${template} --region R".`);
+      }
+      await onTarget(t, scenario ?? readManifest(folder)?.simulator);
       const maskPath = mask ? (typeof mask === 'string' ? mask : path.join(outDir(folder, 'detect'), `${t}-${region ?? 'window'}-${stamp()}.png`)) : undefined;
-      const result = await withFrame('session.detect', { region: spec, color, tolerance, minPixels, mask: maskPath });
-      return { target: t, region: region ?? null, ...result, note: 'Match positions are fractions of the region. Palette colors are averages of similar pixels; use one as a starting color.' };
+      const result = await withFrame('session.detect', { region: spec, color, tolerance, minPixels, mask: maskPath, template: tpl });
+      return { target: t, region: region ?? null, ...result, note: 'Match positions are fractions of the region. Palette colors are averages of similar pixels; use one as a starting color. A template score is 0 to 1; screen.find counts 0.8 and up as seen by default.' };
+    },
+
+    /** Reads text in a region (or the whole window) with the system's text recognition. */
+    async read({ folder, target, region, fast = false, scenario } = {}) {
+      const t = pickTarget(target, folder);
+      const { regions } = macroInfo(folder);
+      const spec = regionFor(region, regions);
+      await onTarget(t, scenario ?? readManifest(folder)?.simulator);
+      const result = await withFrame('session.read', { region: spec, accurate: !fast });
+      return { target: t, region: region ?? null, ...result, note: 'Line boxes are fractions of the region. In a macro, ctx.screen.read(region) gives the same text a couple of times a second, with .number for the first number in it.' };
+    },
+
+    /** Saves a region of the target window as templates/NAME.png for screen.find. */
+    async saveTemplate({ folder, target, name, region, scenario } = {}) {
+      if (!folder) throw new MacroError('Saving a template needs a macro folder.');
+      const slug = String(name ?? '').trim();
+      if (!/^[\w-]+$/.test(slug)) throw new MacroError('Name the template with letters, digits, - or _, like sell-button.');
+      if (!region) throw new MacroError('Say which region to save: --region R. Draw a tight one around the thing first.');
+      const t = pickTarget(target, folder);
+      const { regions } = macroInfo(folder);
+      await onTarget(t, scenario ?? readManifest(folder)?.simulator);
+      const file = path.join(folder, 'templates', `${slug}.png`);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      const result = await withFrame('session.snapshot', { path: file, region: regionFor(region, regions) });
+      const metaFile = path.join(folder, 'templates.json');
+      let meta = {};
+      try {
+        meta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+      } catch {}
+      meta[slug] = { viewportHeight: result.viewport.h, region };
+      fs.writeFileSync(metaFile, `${JSON.stringify(meta, null, 2)}\n`);
+      notify('log', { text: `Agent saved template "${slug}" from region "${region}".` });
+      return { name: slug, file, path: file, width: result.width, height: result.height, viewportHeight: result.viewport.h, usage: `const ${slug.replace(/-(\w)/g, (_, c) => c.toUpperCase())} = ctx.screen.find("${region}", { template: "${slug}" });` };
+    },
+
+    async templates({ folder } = {}) {
+      const meta = (() => {
+        try {
+          return JSON.parse(fs.readFileSync(path.join(folder, 'templates.json'), 'utf8'));
+        } catch {
+          return {};
+        }
+      })();
+      return Object.entries(meta).map(([name, m]) => ({ name, ...m, file: path.join(folder, 'templates', `${name}.png`) }));
     },
 
     async act({ folder, target, command } = {}) {

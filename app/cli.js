@@ -17,7 +17,11 @@ Usage: wick <command> [options]
   status                         Wick, the engine, permissions and targets
   observe [--region R] [--out F] Save a PNG of the target window or one region
   detect [--region R] [--color HEX] [--tolerance N] [--min-pixels N] [--mask [F]]
-                                 Main colors in a region, and where a color matches
+         [--template NAME]       Main colors in a region, where a color matches, and
+                                 how well a saved template matches
+  read [--region R] [--fast]     Read the text in a region (or the whole window)
+  template save NAME --region R  Save a region as templates/NAME.png for screen.find
+  templates                      List the macro's templates
   act click [--at R|R:x,y] [--button B] [--hold MS]
   act press KEY [--hold MS]      Also: key-down KEY, key-up KEY, mouse-down, mouse-up,
                                  move --at R, turn --dx N --dy N
@@ -55,7 +59,7 @@ Options for every command:
 
 Output is JSON. Input only reaches the target while it has focus; F8 stops everything.`;
 
-const BOOLEAN = new Set(['local', 'live', 'help', 'mask', 'exact', 'you', 'run']);
+const BOOLEAN = new Set(['local', 'live', 'help', 'mask', 'exact', 'you', 'run', 'fast']);
 const REPEATED = new Set(['track', 'input']);
 
 export function parseArgs(argv) {
@@ -178,7 +182,19 @@ export function toRequest(positional, flags, cwd = process.cwd()) {
         tolerance: number(flags.tolerance),
         minPixels: number(flags.minPixels),
         mask: typeof flags.mask === 'string' ? path.resolve(cwd, flags.mask) : flags.mask,
+        template: flags.template,
       }];
+    case 'template': {
+      needFolder();
+      const [action, name] = args;
+      if (action !== 'save' || !name) throw new Error('Use "wick template save NAME --region R".');
+      return ['saveTemplate', { ...base, name, region: flags.region }];
+    }
+    case 'read':
+      return ['read', { ...base, region: flags.region, fast: Boolean(flags.fast) }];
+    case 'templates':
+      needFolder();
+      return ['templates', base];
     case 'act': {
       const make = ACT[args[0]];
       if (!make) throw new Error(`Unknown input "${args[0] ?? ''}". Use ${Object.keys(ACT).join(', ')}.`);

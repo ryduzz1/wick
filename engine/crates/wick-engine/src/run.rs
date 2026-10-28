@@ -35,6 +35,9 @@ pub struct MacroSpec {
     /// How human the input looks. Missing means exact input.
     #[serde(default)]
     pub human: Option<HumanProfile>,
+    /// Images for `screen.find`, by name.
+    #[serde(default)]
+    pub templates: HashMap<String, crate::template::TemplateSpec>,
 }
 
 fn default_entry() -> String {
@@ -69,6 +72,27 @@ impl RunEnd {
 /// A `screen.similar` check: id, region, reference signature, latest score.
 type Similar = (u64, String, Option<Vec<u8>>, Option<f64>);
 
+/// A `screen.read`: text recognition a couple of times a second, on a worker.
+struct Reader {
+    id: u64,
+    region: String,
+    every_ms: f64,
+    next_at: f64,
+    accurate: bool,
+    pending: Option<std::sync::mpsc::Receiver<Result<Vec<wick_platform::TextLine>, String>>>,
+    result: Value,
+}
+
+/// A `screen.find` search, run a few times a second.
+struct Finder {
+    id: u64,
+    region: String,
+    template: String,
+    every_ms: f64,
+    next_at: f64,
+    found: Option<crate::template::Found>,
+}
+
 pub struct MacroRun {
     pub spec: MacroSpec,
     runtime: MacroRuntime,
@@ -82,6 +106,9 @@ pub struct MacroRun {
     pub loops: u64,
     pub ticks: u64,
     similars: Vec<Similar>,
+    finders: Vec<Finder>,
+    readers: Vec<Reader>,
+    templates: HashMap<String, crate::template::Template>,
     /// The state machine's current state and counters.
     state: Option<String>,
     timeouts: u64,
@@ -119,6 +146,12 @@ impl MacroRun {
             &json!({ "settings": settings, "latency": target.latency() }),
         )?;
         let input = InputState::with_profile(spec.human.clone());
+        let mut templates = HashMap::new();
+        for (name, t) in &spec.templates {
+            let decoded = crate::template::Template::decode(t)
+                .map_err(|e| format!("Template \"{name}\": {e}"))?;
+            templates.insert(name.clone(), decoded);
+        }
         Ok(MacroRun {
             permissions: spec.permissions.iter().cloned().collect(),
             spec,
@@ -131,6 +164,9 @@ impl MacroRun {
             loops: 0,
             ticks: 0,
             similars: Vec::new(),
+            finders: Vec::new(),
+            readers: Vec::new(),
+            templates,
             state: None,
             timeouts: 0,
             recoveries: 0,
@@ -167,6 +203,46 @@ impl MacroRun {
                 self.region_rect(&region)?;
                 self.similars
                     .push((cmd["id"].as_u64().unwrap_or(0), region, None, None));
+            }
+            "find" => {
+                let region = cmd["region"].as_str().unwrap_or_default().to_string();
+                self.region_rect(&region)?;
+                let template = cmd["template"].as_str().unwrap_or_default().to_string();
+                if !self.templates.contains_key(&template) {
+                    let mut known: Vec<&String> = self.templates.keys().collect();
+                    known.sort();
+                    return Err(format!(
+                        "Unknown template \"{template}\". Save it with \"wick template save {template} --region R\"{}.",
+                        if known.is_empty() {
+                            String::new()
+                        } else {
+                            format!("; this macro has {}", known.iter().map(|k| format!("\"{k}\"")).collect::<Vec<_>>().join(", "))
+                        }
+                    ));
+                }
+                let hz = cmd["hz"].as_f64().unwrap_or(10.0).clamp(1.0, 30.0);
+                self.finders.push(Finder {
+                    id: cmd["id"].as_u64().unwrap_or(0),
+                    region,
+                    template,
+                    every_ms: 1000.0 / hz,
+                    next_at: 0.0,
+                    found: None,
+                });
+            }
+            "read" => {
+                let region = cmd["region"].as_str().unwrap_or_default().to_string();
+                self.region_rect(&region)?;
+                let hz = cmd["hz"].as_f64().unwrap_or(2.0).clamp(0.2, 5.0);
+                self.readers.push(Reader {
+                    id: cmd["id"].as_u64().unwrap_or(0),
+                    region,
+                    every_ms: 1000.0 / hz,
+                    next_at: 0.0,
+                    accurate: cmd["accurate"].as_bool().unwrap_or(false),
+                    pending: None,
+                    result: Value::Null,
+                });
             }
             "similarRetake" => {
                 let id = cmd["id"].as_u64().unwrap_or(0);
@@ -291,6 +367,40 @@ impl MacroRun {
                     }
                 }
             }
+            for f in &mut self.finders {
+                if now < f.next_at {
+                    continue;
+                }
+                f.next_at = now + f.every_ms;
+                if let (Some(spec), Some(t)) = (
+                    self.spec.regions.get(f.region.as_str()),
+                    self.templates.get(&f.template),
+                ) {
+                    let rect = spec.resolve(self.viewport);
+                    f.found = crate::template::find(frame, rect, t, self.viewport.h);
+                }
+            }
+            for r in &mut self.readers {
+                if let Some(rx) = &r.pending {
+                    match rx.try_recv() {
+                        Ok(result) => {
+                            r.result = crate::text::to_json(&result);
+                            r.result["at"] = json!(now.round());
+                            r.pending = None;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => r.pending = None,
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                    }
+                }
+                if r.pending.is_some() || now < r.next_at {
+                    continue;
+                }
+                r.next_at = now + r.every_ms;
+                if let Some(spec) = self.spec.regions.get(r.region.as_str()) {
+                    let image = crate::text::crop(frame, spec.resolve(self.viewport));
+                    r.pending = Some(crate::text::read_async(image, r.accurate));
+                }
+            }
             if let Some(trace) = &mut self.trace {
                 let points: Vec<Value> = self.trackers.iter().map(|t| t.trace_point()).collect();
                 trace.push(json!([now.round(), points]));
@@ -307,6 +417,8 @@ impl MacroRun {
             "viewport": { "width": self.viewport.w, "height": self.viewport.h },
             "trackers": states,
             "similar": self.similars.iter().map(|s| (s.0.to_string(), json!(s.3))).collect::<Map<_, _>>(),
+            "text": self.readers.iter().filter(|r| !r.result.is_null()).map(|r| (r.id.to_string(), r.result.clone())).collect::<Map<_, _>>(),
+            "found": self.finders.iter().map(|f| (f.id.to_string(), f.found.as_ref().map_or(Value::Null, |m| m.json()))).collect::<Map<_, _>>(),
         });
         let drained = match self.runtime.step(&state) {
             Ok(d) => d,

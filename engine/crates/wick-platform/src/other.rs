@@ -66,3 +66,13 @@ pub fn start_listener() -> Result<(), String> {
 }
 
 pub fn stop_listener() {}
+
+pub fn read_text(
+    _bgra: &[u8],
+    _width: usize,
+    _height: usize,
+    _stride: usize,
+    _accurate: bool,
+) -> Result<Vec<crate::TextLine>, String> {
+    Err("text recognition isn't supported on this platform".into())
+}

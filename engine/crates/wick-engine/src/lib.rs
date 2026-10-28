@@ -15,6 +15,8 @@ pub mod sim;
 pub mod sim_world;
 pub mod storyboard;
 pub mod target;
+pub mod template;
+pub mod text;
 pub mod tracker;
 pub mod vision;
 pub mod window_target;

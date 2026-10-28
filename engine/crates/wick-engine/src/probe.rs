@@ -284,6 +284,9 @@ pub struct DetectSpec {
     pub min_pixels: usize,
     /// Where to write a PNG of the region with matches outlined in ember.
     pub mask: Option<std::path::PathBuf>,
+    /// A template to look for in the region, too.
+    #[serde(default)]
+    pub template: Option<crate::template::TemplateSpec>,
 }
 
 /// The most common colors in a rectangle, by coarse bucket, with each
@@ -343,6 +346,15 @@ pub fn detect(frame: &Frame, viewport: Rect, spec: &DetectSpec) -> Result<Value,
                 "top": r4(m.top), "bottom": r4(m.bottom),
             }),
             None => json!({ "found": false }),
+        };
+    }
+    if let Some(t) = &spec.template {
+        let t = crate::template::Template::decode(t)?;
+        out["template"] = match crate::template::find(frame, rect, &t, viewport.h) {
+            Some(m) => m.json(),
+            None => {
+                json!({ "score": 0, "note": "The template is bigger than the region at this window size." })
+            }
         };
     }
     if let Some(path) = &spec.mask {
@@ -494,6 +506,7 @@ mod tests {
             tolerance: 30.0,
             min_pixels: 3,
             mask: None,
+            template: None,
         };
         let r = detect(&frame, target.viewport(), &spec).unwrap();
         assert_eq!(r["match"]["found"], json!(true));

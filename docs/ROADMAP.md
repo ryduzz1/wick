@@ -73,7 +73,7 @@ Built as one large pass:
 
 **Verification:** sim tests run a state-machine macro for 40 seconds with a stuck cast and a disconnect: it plays at least 8 rounds, resets once, rejoins once and recovers at least twice; with a loop limit it stops after exactly 3 loops; without the reset permission it stops with a clear error. Simulator tests cover rounds, stuck casts and disconnects; Roblox tests check the reset key order and that rejoin needs a place ID. A Node test runs the fishing example through the command layer with human input and checks the same recoveries.
 
-### Pass 6: Demonstrations (in progress)
+### Pass 6: Demonstrations, templates and text
 
 - **Longer recordings:** up to 10 minutes. Keyframes are smaller and spaced out for long recordings, and the contact sheet is built from the saved PNGs instead of thumbnails kept in memory.
 - **Your mouse:** `record --you` now logs mouse motion (summed per sample as `"mouse"` lines, with raw deltas so camera turns show up even while the game locks the cursor) and modifier keys on their own (shift, control, alt, command) on macOS. Windows logs motion from the low-level mouse hook.
@@ -85,9 +85,10 @@ Built as one large pass:
 - States that time out now let go of the keys and buttons they were holding.
 - **Example:** `examples/fishing-trip`: spawn to dock, fish until the bag is full, walk to the vendor, sell, reset, repeat, with routes made from its `demo.json`.
 
-Still to do in this pass: template matching and OCR.
+- **Template matching:** `screen.find(region, { template })` finds a saved image by normalized cross-correlation on grayscale (coarse to fine), scaled with the window height. Templates live in `templates/` with their saved height in `templates.json`; `wick template save`, `wick templates` and `wick detect --template` (and the MCP tools) make and check them.
+- **Text:** `screen.read(region)` reads text with Vision on macOS and Windows.Media.Ocr on Windows, on a worker thread a couple of times a second, with `.text`, `.lines`, `.number` and `.has()`. `wick read` and `wick_read` read once.
 
-**Verification so far:** storyboard tests split a synthetic demonstration (walk with a camera turn, press E, wait for a scene change, ten clicks, walk) into exactly the expected five steps and labels, and an idle recording into one wait; a PNG round-trip test. World tests cover walking along a turned heading, filling the bag, a full bag not casting, the sell menu blocking movement and selling, reset to spawn, and the prompt. Session tests: a route stops where `until` fires, within reach of the dock; holds and a quarter turn replay to the expected position and heading; a timed-out state stops walking at the timeout; a scripted demonstration records into exactly the expected seven storyboard steps. A Node test runs the whole path through the command layer: record the fishing trip's demo, cut two routes from the storyboard, and run the macro on them with human input until it sells a bag without a timeout. (Run by hand, the example made two full trips in 70 s.) The Windows motion hook type-checks with `cargo clippy --target x86_64-pc-windows-msvc`. The example-macro Node test now pins its human-profile seeds, which made it flaky before.
+**Verification:** storyboard tests split a synthetic demonstration (walk with a camera turn, press E, wait for a scene change, ten clicks, walk) into exactly the expected five steps and labels, and an idle recording into one wait; a PNG round-trip test. World tests cover walking along a turned heading, filling the bag, a full bag not casting, the sell menu blocking movement and selling, reset to spawn, and the prompt. Session tests: a route stops where `until` fires, within reach of the dock; holds and a quarter turn replay to the expected position and heading; a timed-out state stops walking at the timeout; a scripted demonstration records into exactly the expected seven storyboard steps. A Node test runs the whole path through the command layer: record the fishing trip's demo, cut two routes from the storyboard, and run the macro on them with human input until it sells a bag without a timeout. (Run by hand, the example made two full trips in 70 s.) Template tests find an icon at its exact spot, at twice the size in a bigger window, with the brightness changed, and score it low when it's absent or outside the region; a session test cuts the sim's sell button out of a frame, and a macro finds it in the open menu and clicks it to sell. A Node test saves a template from the sim world, matches it with `detect` and loads it with the macro. An OCR test reads "Bag 3/5" and "Coins: 120" from a PNG fixture with Vision (and on Windows CI when a recognition language is installed). The Windows motion hook and OCR type-check with `cargo clippy --target x86_64-pc-windows-msvc`. The example-macro Node test now pins its human-profile seeds, which made it flaky before.
 
 ## Still to test by hand
 
@@ -98,6 +99,7 @@ Kept for the end-to-end test once the app is finished:
 - Agent tools on a real window: `observe`, `detect`, `probe` and `act` on the test bench; Claude Code building a macro from a new folder.
 - Human input: watch the mouse paths and click timing on the test bench at a few precision values; the example should still keep up at 0.85.
 - `wick record --you` on the test bench: your clicks and keys show up in `record.jsonl` with the right positions, Wick's own clicks are marked `wick`, and nothing is logged while another window has focus.
+- `screen.read` and `wick read` on real game text (counters, item names) on macOS and Windows, and `screen.find` on a real button at a couple of window sizes.
 - Teach a loop for real: record one trip in a Roblox game with `--you`, cut routes with `wick route`, and check that `ctx.input.play` walks the same way with the human profile on (camera turns included).
 - `wick record --you --seconds 120` in a Roblox game: mouse turns while right-dragging or in shift lock show up as `"mouse"` lines, shift on its own is heard, and `storyboard.md` splits a walk–interact–wait loop into sensible steps.
 - The trace graph and the Runs card during and after a live run on the test bench.
@@ -107,7 +109,7 @@ Kept for the end-to-end test once the app is finished:
 
 ## Build plan
 
-Left over from earlier passes, to fold into the passes below: a `dist:dir` packaged build, `template` and `similar` detectors and a PNG fixture set, measured (rather than fixed) input latency on real windows, and a per-frame detector benchmark.
+Left over from earlier passes, to fold into the passes below: a `dist:dir` packaged build, measured (rather than fixed) input latency on real windows, and a per-frame detector benchmark.
 
 ### Pass 7: Sharing
 
@@ -121,10 +123,9 @@ Left over from earlier passes, to fold into the passes below: a `dist:dir` packa
 ### Pass 8: Polish and release (planned passes 11 and 12)
 
 - The mini window over Roblox.
-- OCR (Vision on macOS, Windows.Media.Ocr on Windows).
 - Logo, icon, onboarding, empty states, keyboard shortcuts, and a full pass against [DESIGN.md](DESIGN.md).
 
-**Checks:** OCR fixture tests. Manual: a full first-run walkthrough on both platforms.
+**Checks:** Manual: a full first-run walkthrough on both platforms.
 
 #### Release
 

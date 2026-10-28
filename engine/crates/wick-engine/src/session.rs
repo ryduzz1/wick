@@ -58,6 +58,8 @@ pub enum Msg {
     StopMacro(String),
     Snapshot(std::path::PathBuf, Option<RegionSpec>, Reply),
     Detect(Box<DetectSpec>, Reply),
+    /// Reads text in a region (or the whole window); replies from a worker.
+    Read(Option<RegionSpec>, bool, Reply),
     /// One input from an agent, with the regions its position may refer to.
     Act(Box<Command>, HashMap<String, RegionSpec>, Reply),
     Probe(Box<ProbeSpec>, Reply),
@@ -200,6 +202,33 @@ fn session_loop(
                     };
                     let _ = reply.send(result);
                 }
+                Msg::Read(region, accurate, reply) => match &last_frame {
+                    Some(f) => {
+                        let viewport = target.viewport();
+                        let rect = match region
+                            .as_ref()
+                            .map(|r| r.validate("region").map(|_| r.resolve(viewport)))
+                        {
+                            Some(Ok(rect)) => rect,
+                            Some(Err(e)) => {
+                                let _ = reply.send(Err(e));
+                                continue;
+                            }
+                            None => viewport,
+                        };
+                        let image = crate::text::crop(f, rect);
+                        std::thread::spawn(move || {
+                            let result = crate::text::read(&image, accurate);
+                            let _ = reply.send(match result {
+                                Ok(lines) => Ok(crate::text::to_json(&Ok(lines))),
+                                Err(e) => Err(e),
+                            });
+                        });
+                    }
+                    None => {
+                        let _ = reply.send(Err(no_frame(target.as_mut())));
+                    }
+                },
                 Msg::Act(command, regions, reply) => {
                     let _ = reply.send(act(target.as_mut(), &mut agent, *command, &regions));
                 }
@@ -532,6 +561,7 @@ mod tests {
             settings: json!({}),
             human: None,
             game: Default::default(),
+            templates: HashMap::new(),
         }
     }
 
@@ -866,6 +896,76 @@ mod tests {
         assert_eq!(board["steps"][4]["actions"][0]["at"], json!([0.5, 0.6]));
         assert!(r["storyboard"]["sheet"].is_string(), "{r}");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_template_finds_the_sell_button_to_click() {
+        use crate::sim_world::{World, WorldSpec};
+        use base64::Engine as _;
+        // The template: the sell button, cut from a frame of the open menu.
+        let mut world = World::new(WorldSpec::default());
+        world.menu = true;
+        world.bag = 1;
+        let game = crate::sim::BarGame::new(Scenario {
+            round_ms: 2500.0,
+            ..Scenario::default()
+        });
+        let mut frame = crate::frame::Frame::new(960, 540, [0, 0, 0]);
+        world.render(&game, &mut frame);
+        let b = World::sell_button(960, 540);
+        let pad = 8.0;
+        let crop = frame.crop(crate::frame::Rect::new(
+            b.x - pad,
+            b.y - pad,
+            b.w + 2.0 * pad,
+            b.h + 2.0 * pad,
+        ));
+        let file = std::env::temp_dir().join(format!("wick-sell-{}.png", std::process::id()));
+        crop.write_png(&file).unwrap();
+        let png = base64::engine::general_purpose::STANDARD.encode(std::fs::read(&file).unwrap());
+        let _ = std::fs::remove_file(&file);
+
+        let main = r##"
+            export default { async run(ctx) {
+              const prompt = ctx.screen.track("prompt", { color: "#f2c14e" });
+              const sell = ctx.screen.find("menu", { template: "sell" });
+              await ctx.input.play([{ t: 0, do: "hold", key: "w", ms: 1333 }], { until: () => prompt.seen, settle: 500 });
+              ctx.input.press("e");
+              await ctx.wait(3500);
+              await ctx.input.play([{ t: 0, do: "hold", key: "s", ms: 1333 }, { t: 1400, do: "hold", key: "d", ms: 1867 }], { settle: 500 });
+              if (sell.seen) throw new Error("found before the menu opened: " + sell.score);
+              ctx.input.press("e");
+              await ctx.waitUntil(() => sell.seen, { timeout: 1000 });
+              ctx.log(sell.score.toFixed(3), sell.x.toFixed(3), sell.y.toFixed(3));
+              ctx.input.click({ at: sell.at });
+              await ctx.wait(300);
+            } };
+        "##;
+        let mut s = world_spec(main);
+        s.regions.insert(
+            "menu".into(),
+            RegionSpec {
+                anchor: "center".into(),
+                x: 0.0,
+                y: 0.0,
+                w: 0.7,
+                h: 0.4,
+            },
+        );
+        s.templates.insert(
+            "sell".into(),
+            crate::template::TemplateSpec {
+                png,
+                viewport_height: 540.0,
+            },
+        );
+        let r = run_headless(s, world_scenario(), 15.0).unwrap();
+        assert_eq!(r["end"]["reason"], "done", "{r}");
+        assert_eq!(
+            r["score"]["world"]["coins"],
+            json!(10),
+            "sold the one fish: {r}"
+        );
     }
 
     #[test]

@@ -208,8 +208,13 @@ impl Frame {
 
     /// Reads a PNG file written by `write_png` (or any 8-bit RGB/RGBA PNG).
     pub fn read_png(path: &std::path::Path) -> Result<Frame, String> {
-        let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-        let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        Self::decode_png(&bytes)
+    }
+
+    /// Decodes an 8-bit PNG.
+    pub fn decode_png(bytes: &[u8]) -> Result<Frame, String> {
+        let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
         decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
         let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
         let mut buf = vec![0; reader.output_buffer_size().ok_or("PNG too large")?];

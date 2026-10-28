@@ -10,6 +10,7 @@
 #import <CoreVideo/CoreVideo.h>
 #import <Foundation/Foundation.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
+#import <Vision/Vision.h>
 
 typedef void (*wick_frame_cb)(void *ctx, const uint8_t *data, size_t width, size_t height, size_t stride);
 typedef void (*wick_hotkey_cb)(void *ctx);
@@ -412,4 +413,52 @@ int wick_mac_listen(int on, wick_input_cb callback, void *context) {
     listen_on = 1;
     CGEventTapEnable(listen_tap, true);
     return 1;
+}
+
+// MARK: - Text recognition
+
+// Reads text in a BGRA image with Vision. Returns a JSON array of lines,
+// { text, confidence, x, y, w, h } with the box as fractions of the image
+// from its top left, or an object { error } (free it with wick_mac_free).
+char *wick_mac_read_text(const uint8_t *bgra, int width, int height, int stride, int accurate) {
+    @autoreleasepool {
+        CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+        CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, bgra, (size_t)stride * height, NULL);
+        CGImageRef image = CGImageCreate(width, height, 8, 32, stride, space,
+                                         kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst, provider, NULL,
+                                         false, kCGRenderingIntentDefault);
+        CGDataProviderRelease(provider);
+        CGColorSpaceRelease(space);
+        if (!image) return copy_c_string(@"{\"error\":\"Couldn't make an image to read.\"}");
+        VNRecognizeTextRequest *request = [[VNRecognizeTextRequest alloc] init];
+        request.recognitionLevel =
+            accurate ? VNRequestTextRecognitionLevelAccurate : VNRequestTextRecognitionLevelFast;
+        request.usesLanguageCorrection = NO;
+        VNImageRequestHandler *handler = [[VNImageRequestHandler alloc] initWithCGImage:image options:@{}];
+        NSError *error = nil;
+        BOOL ok = [handler performRequests:@[ request ] error:&error];
+        CGImageRelease(image);
+        NSObject *out;
+        if (!ok) {
+            out = @{@"error" : error.localizedDescription ?: @"Text recognition failed."};
+        } else {
+            NSMutableArray *lines = [NSMutableArray array];
+            for (VNRecognizedTextObservation *o in request.results) {
+                VNRecognizedText *best = [o topCandidates:1].firstObject;
+                if (!best) continue;
+                CGRect b = o.boundingBox;
+                [lines addObject:@{
+                    @"text" : best.string,
+                    @"confidence" : @(best.confidence),
+                    @"x" : @(b.origin.x),
+                    @"y" : @(1.0 - b.origin.y - b.size.height),
+                    @"w" : @(b.size.width),
+                    @"h" : @(b.size.height),
+                }];
+            }
+            out = lines;
+        }
+        NSData *json = [NSJSONSerialization dataWithJSONObject:out options:0 error:nil];
+        return copy_c_string([[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]);
+    }
 }

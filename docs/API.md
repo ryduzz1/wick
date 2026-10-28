@@ -29,7 +29,43 @@ Times are in milliseconds since the run started, and `ctx.now()` returns the cur
 | --- | --- |
 | `track(region, { color, tolerance?, minPixels? })` | Starts following a color inside a region from `regions.json`. `color` is `#rrggbb`; `tolerance` (default 30) is the largest difference allowed on any channel; `minPixels` (default 3) is the fewest matches that count as found. Returns a tracker. |
 | `similar(region, { threshold? })` | Starts comparing a region to how it looks on the next frame. Returns a check with `score` (the share of the region that still looks the same, 0 to 1), `matches` (`score` ≥ `threshold`, default 0.9) and `retake()`. Use it to tell whether you're back where you started. |
+| `find(region, { template, threshold?, hz? })` | Starts looking for a saved image (`templates/NAME.png`) in a region, `hz` times a second (default 10, up to 30). Returns a finder (below). For things one color can't pick out: a button, an icon, an item. |
+| `read(region, { hz?, accurate? })` | Starts reading the text in a region with the system's text recognition, `hz` times a second (default 2, up to 5). Returns a text reader (below). For counters, item names and menu labels. |
 | `width`, `height` | The game viewport's size in frame pixels. |
+
+### Finders
+
+Template matching compares shapes in grayscale, so it doesn't mind brightness or contrast changes, and it scales the template with the window: a template saved in a 1080-pixel-tall window still matches in a 720-pixel one.
+
+| | |
+| --- | --- |
+| `seen` | Whether the best match scores at least `threshold` (default 0.8). |
+| `score` | How well the best spot matches, 0 to 1; `NaN` before the first search. |
+| `x`, `y`, `width`, `height` | The match's center and size, as fractions of the region. |
+| `at` | The match's center as a point, for `input.click({ at: finder.at })`; `null` when not seen. |
+
+Save templates with `wick template save NAME --region R` around a tight region, then search a larger one. `wick detect --region R --template NAME` shows the score a macro would see.
+
+### Text readers
+
+Text recognition takes tens of milliseconds, so it runs beside the macro and results arrive a little after the frame they came from. Draw a tight region around the text; small text is scaled up before reading.
+
+| | |
+| --- | --- |
+| `ready` | Whether a read has finished yet. |
+| `text` | All the text, top to bottom, one line per line; `""` until the first read. |
+| `lines` | Each line: `{ text, confidence, x, y, width, height }`, with the box as fractions of the region. Windows reports no confidence (always 1). |
+| `number`, `numbers` | The first number in the text (`NaN` if none), and all of them: "Bag 3/5" gives `3` and `[3, 5]`. |
+| `has(s)` | Whether the text contains `s`, ignoring case. |
+| `at`, `error` | When the text was last read (ms since the macro started), and why the last read failed, if it did. |
+
+```ts
+const bag = ctx.screen.read("bagCount");
+await ctx.waitUntil(() => bag.ready);
+if (bag.numbers[0] >= bag.numbers[1]) return "sell";
+```
+
+On the headless simulator, reads finish in real time while the game runs faster, so text-reading macros are best tested live.
 
 ### Trackers
 

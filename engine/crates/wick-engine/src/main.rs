@@ -242,6 +242,27 @@ fn main() {
                     Err(e) => emitter.reply(&id, Err(e)),
                 }
             }
+            "session.read" => {
+                let started = (|| {
+                    let region: Option<RegionSpec> = param(&params, "region")?;
+                    let accurate = params["accurate"].as_bool().unwrap_or(true);
+                    let (tx, rx) = mpsc::channel();
+                    engine.with_session(|s| s.send(Msg::Read(region, accurate, tx)))?;
+                    Ok::<_, String>(rx)
+                })();
+                match started {
+                    Ok(rx) => {
+                        let emitter = emitter.clone();
+                        std::thread::spawn(move || {
+                            let result = rx
+                                .recv()
+                                .unwrap_or_else(|_| Err("The session stopped".into()));
+                            emitter.reply(&id, result);
+                        });
+                    }
+                    Err(e) => emitter.reply(&id, Err(e)),
+                }
+            }
             "session.record" => {
                 let started = (|| {
                     let spec: RecordSpec = serde_json::from_value(params.clone())

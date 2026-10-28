@@ -189,6 +189,8 @@ You write the macro; you don't play the game. Use the \`wick\` CLI (or the Wick 
 | \`wick regions\` / \`wick region set bar --anchor bottom-center --x 0 --y -0.18 --w 0.46 --h 0.06\` | List or edit regions. x/y place the center relative to the anchor; all four are in viewport heights. |
 | \`wick probe --track tick:bar:#ffffff --clicks 5 --every 300 --seconds 2\` | Follows colors while sending timed input; prints each tracker's position over time. Use it to measure speeds, how far an input moves things, and latency. |
 | \`wick act click [--at bar]\` / \`wick act press e\` | Sends one input to test something. |
+| \`wick read --region bag\` | Reads the text in a region. In the macro, \`ctx.screen.read(region)\` gives \`.text\` and \`.number\`. |
+| \`wick template save sell --region sellButton\` | Saves a tight region as \`templates/sell.png\`; find it in the macro with \`ctx.screen.find(region, { template: "sell" })\`, and check scores with \`wick detect --region R --template sell\`. Use it when one color can't pick something out. |
 | \`wick record --seconds 120 [--you] [--run]\` | Saves keyframes, a change score per sample and every input to \`.wick/recordings/\`, plus a contact sheet and \`storyboard.md\` (the recording split into steps). \`--you\` logs the user's own clicks, keys and mouse: ask them to play one full loop of the task from a spot they can always get back to (like right after a respawn). |
 | \`wick storyboard\` | The newest recording's steps again: what was held, pressed, clicked and turned, the waits, and the frames at each step's start and end. |
 | \`wick route --steps 3-4 --name to-vendor\` | Saves those storyboard steps as \`routes/to-vendor.js\`, for \`ctx.input.play(route, { until })\`. |

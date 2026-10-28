@@ -9,6 +9,8 @@
   const queue = [];
   const trackers = new Map();
   const similars = new Map();
+  const finders = new Map();
+  const readers = new Map();
   const timers = [];
   const lastClick = new Map();
   const settings = {};
@@ -95,7 +97,74 @@
     }
   }
 
+  class Finder {
+    #found = null;
+    constructor(id, region, template, threshold) {
+      this.id = id;
+      this.region = region;
+      this.template = template;
+      this.threshold = threshold;
+    }
+    _set(found) {
+      this.#found = found;
+    }
+    /** Whether the best match scores at least the threshold. */
+    get seen() { return this.#found != null && this.#found.score >= this.threshold; }
+    /** How well the best spot matches, 0 to 1; NaN before the first search. */
+    get score() { return this.#found?.score ?? NaN; }
+    get x() { return this.seen ? this.#found.x : NaN; }
+    get y() { return this.seen ? this.#found.y : NaN; }
+    get width() { return this.seen ? this.#found.width : 0; }
+    get height() { return this.seen ? this.#found.height : 0; }
+    /** The match's center, for input.click({ at }). */
+    get at() { return this.seen ? { region: this.region, x: this.#found.x, y: this.#found.y } : null; }
+  }
+
+  const NUMBER = /-?\d[\d,]*(?:\.\d+)?/g;
+  class TextReader {
+    #result = null;
+    constructor(id, region) {
+      this.id = id;
+      this.region = region;
+    }
+    _set(result) {
+      this.#result = result;
+    }
+    /** Whether a read has finished yet. */
+    get ready() { return this.#result != null; }
+    /** All the text, top to bottom, one line per line; "" until the first read. */
+    get text() { return this.#result?.text ?? ""; }
+    get lines() { return this.#result?.lines ?? []; }
+    /** Why the last read failed, if it did. */
+    get error() { return this.#result?.error ?? null; }
+    /** Every number in the text, in order ("3/5" gives [3, 5]). */
+    get numbers() { return (this.text.match(NUMBER) ?? []).map((n) => Number(n.replace(/,/g, ""))); }
+    /** The first number in the text, or NaN. */
+    get number() { return this.numbers[0] ?? NaN; }
+    /** Milliseconds since the macro started when the text was last read. */
+    get at() { return this.#result?.at ?? NaN; }
+    /** Whether the text contains `s`, ignoring case. */
+    has(s) { return this.text.toLowerCase().includes(String(s).toLowerCase()); }
+  }
+
   const screen = {
+    read(region, options = {}) {
+      if (typeof region !== "string") fail("screen.read(region) needs a region name");
+      const id = nextId++;
+      const r = new TextReader(id, region);
+      readers.set(id, r);
+      queue.push({ t: "read", id, region, hz: options.hz ?? 2, accurate: Boolean(options.accurate) });
+      return r;
+    },
+    find(region, options = {}) {
+      if (typeof region !== "string") fail("screen.find(region, { template }) needs a region name");
+      if (typeof options.template !== "string") fail(`screen.find("${region}") needs a template name, like { template: "sell" }`);
+      const id = nextId++;
+      const f = new Finder(id, region, options.template, options.threshold ?? 0.8);
+      finders.set(id, f);
+      queue.push({ t: "find", id, region, template: options.template, hz: options.hz ?? 10 });
+      return f;
+    },
     similar(region, options = {}) {
       if (typeof region !== "string") fail("screen.similar(region) needs a region name");
       const id = nextId++;
@@ -514,6 +583,8 @@
     viewport = s.viewport;
     for (const id in s.trackers) trackers.get(Number(id))?._set(s.trackers[id]);
     for (const id in s.similar ?? {}) similars.get(Number(id))?._set(s.similar[id]);
+    for (const id in s.found ?? {}) finders.get(Number(id))?._set(s.found[id]);
+    for (const id in s.text ?? {}) readers.get(Number(id))?._set(s.text[id]);
     for (let i = 0; i < timers.length; i++) {
       const tm = timers[i];
       let finished;

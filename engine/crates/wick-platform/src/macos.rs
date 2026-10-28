@@ -15,6 +15,13 @@ type InputCallback = extern "C" fn(*mut c_void, c_int, c_int, c_int, f64, f64, f
 
 extern "C" {
     fn wick_mac_free(p: *mut c_char);
+    fn wick_mac_read_text(
+        bgra: *const u8,
+        width: c_int,
+        height: c_int,
+        stride: c_int,
+        accurate: c_int,
+    ) -> *mut c_char;
     fn wick_mac_list_windows() -> *mut c_char;
     fn wick_mac_screen_permission() -> c_int;
     fn wick_mac_accessibility_permission(prompt: c_int) -> c_int;
@@ -278,4 +285,27 @@ pub fn start_listener() -> Result<(), String> {
 
 pub fn stop_listener() {
     unsafe { wick_mac_listen(0, on_input, std::ptr::null_mut()) };
+}
+
+pub fn read_text(
+    bgra: &[u8],
+    width: usize,
+    height: usize,
+    stride: usize,
+    accurate: bool,
+) -> Result<Vec<crate::TextLine>, String> {
+    let json = take_string(unsafe {
+        wick_mac_read_text(
+            bgra.as_ptr(),
+            width as c_int,
+            height as c_int,
+            stride as c_int,
+            c_int::from(accurate),
+        )
+    });
+    let value: serde_json::Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    if let Some(e) = value.get("error").and_then(|e| e.as_str()) {
+        return Err(e.to_string());
+    }
+    serde_json::from_value(value).map_err(|e| e.to_string())
 }

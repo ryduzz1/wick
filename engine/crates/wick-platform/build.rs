@@ -18,6 +18,7 @@ fn main() {
         "CoreVideo",
         "Foundation",
         "ScreenCaptureKit",
+        "Vision",
     ] {
         println!("cargo:rustc-link-lib=framework={framework}");
     }

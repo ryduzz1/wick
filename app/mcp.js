@@ -27,9 +27,23 @@ const TOOLS = [
   {
     name: 'wick_detect',
     method: 'detect',
-    description: 'The main colors in a region (or the whole game area), and, with a color, where it matches: pixel count, extent and centroid as fractions of the region. With mask: true, returns an image with matches painted orange.',
-    properties: { folder, target, region, color: { type: 'string', description: '#rrggbb' }, tolerance: { type: 'number', description: 'Largest per-channel difference that still matches (default 30).' }, minPixels: { type: 'number' }, mask: { type: 'boolean' } },
+    description: 'The main colors in a region (or the whole game area), and, with a color, where it matches: pixel count, extent and centroid as fractions of the region. With mask: true, returns an image with matches painted orange. With template, also how well that saved template matches and where (screen.find counts 0.8 and up as seen).',
+    properties: { folder, target, region, color: { type: 'string', description: '#rrggbb' }, tolerance: { type: 'number', description: 'Largest per-channel difference that still matches (default 30).' }, minPixels: { type: 'number' }, mask: { type: 'boolean' }, template: { type: 'string' } },
   },
+  {
+    name: 'wick_save_template',
+    method: 'saveTemplate',
+    description: 'Save a region of the target window as templates/NAME.png, for ctx.screen.find(region, { template: NAME }). Use it for things one color can\'t pick out: a button, an icon, an item. Draw a tight region around the thing first, save, then search a larger region for it. Templates scale with the window height.',
+    properties: { folder, target, name: { type: 'string' }, region },
+    required: ['name', 'region'],
+  },
+  {
+    name: 'wick_read',
+    method: 'read',
+    description: 'Read the text in a region (or the whole game window) with the system\'s text recognition (Vision on macOS, Windows.Media.Ocr on Windows): all the text, and each line with its box as fractions of the region. Use it for counters, item names and menu labels; draw a tight region around the text for the best results.',
+    properties: { folder, target, region, fast: { type: 'boolean', description: 'Faster, less accurate recognition (macOS).' } },
+  },
+  { name: 'wick_templates', method: 'templates', description: 'The macro\'s saved templates.', properties: { folder } },
   { name: 'wick_act', method: 'act', description: 'Send one input to the target window, to test something. Only works while that window has focus.', properties: { folder, target, command }, required: ['command'] },
   {
     name: 'wick_probe',
@@ -97,7 +111,7 @@ const TOOLS = [
   { name: 'wick_new_macro', method: 'newMacro', description: 'Create a new macro folder from the starter template, in the Wick library unless dir is given.', properties: { name: { type: 'string' }, target, dir: { type: 'string' } }, required: ['name'] },
 ];
 
-const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'record', 'storyboard', 'route', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate', 'runs']);
+const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'record', 'storyboard', 'route', 'saveTemplate', 'templates', 'read', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate', 'runs']);
 
 /** Tool results as MCP content: the JSON, plus any PNG the command saved. */
 function content(result) {

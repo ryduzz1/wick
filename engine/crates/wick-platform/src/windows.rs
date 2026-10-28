@@ -545,3 +545,75 @@ pub fn stop_listener() {
         let _ = unsafe { PostThreadMessageW(thread, WM_QUIT, WPARAM(0), LPARAM(0)) };
     }
 }
+
+/// Reads text with Windows.Media.Ocr in the user's profile languages.
+pub fn read_text(
+    bgra: &[u8],
+    width: usize,
+    height: usize,
+    stride: usize,
+    _accurate: bool,
+) -> Result<Vec<crate::TextLine>, String> {
+    use ::windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
+    use ::windows::Media::Ocr::OcrEngine;
+    use ::windows::Storage::Streams::DataWriter;
+    use ::windows::Win32::System::WinRT::{RoInitialize, RO_INIT_MULTITHREADED};
+
+    let err = |e: ::windows::core::Error| e.message().to_string();
+    // Fine if this thread was already initialized.
+    let _ = unsafe { RoInitialize(RO_INIT_MULTITHREADED) };
+    let engine = OcrEngine::TryCreateFromUserProfileLanguages().map_err(|_| {
+        "Windows has no text recognition language installed. Add one in Settings > Time & language > Language.".to_string()
+    })?;
+    let max = OcrEngine::MaxImageDimension().map_err(err)? as usize;
+    if width > max || height > max {
+        return Err(format!(
+            "The image is too big to read (largest side {max} pixels)."
+        ));
+    }
+    // Tightly packed rows for the bitmap.
+    let mut packed = Vec::with_capacity(width * height * 4);
+    for y in 0..height {
+        packed.extend_from_slice(&bgra[y * stride..y * stride + width * 4]);
+    }
+    let writer = DataWriter::new().map_err(err)?;
+    writer.WriteBytes(&packed).map_err(err)?;
+    let buffer = writer.DetachBuffer().map_err(err)?;
+    let bitmap = SoftwareBitmap::CreateCopyFromBuffer(
+        &buffer,
+        BitmapPixelFormat::Bgra8,
+        width as i32,
+        height as i32,
+    )
+    .map_err(err)?;
+    let result = engine
+        .RecognizeAsync(&bitmap)
+        .map_err(err)?
+        .join()
+        .map_err(err)?;
+    let (fw, fh) = (width as f64, height as f64);
+    let mut out = Vec::new();
+    for line in result.Lines().map_err(err)? {
+        let text = line.Text().map_err(err)?.to_string();
+        let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for word in line.Words().map_err(err)? {
+            let r = word.BoundingRect().map_err(err)?;
+            x0 = x0.min(f64::from(r.X));
+            y0 = y0.min(f64::from(r.Y));
+            x1 = x1.max(f64::from(r.X + r.Width));
+            y1 = y1.max(f64::from(r.Y + r.Height));
+        }
+        if x0 > x1 {
+            (x0, y0, x1, y1) = (0.0, 0.0, 0.0, 0.0);
+        }
+        out.push(crate::TextLine {
+            text,
+            confidence: 1.0,
+            x: x0 / fw,
+            y: y0 / fh,
+            w: (x1 - x0) / fw,
+            h: (y1 - y0) / fh,
+        });
+    }
+    Ok(out)
+}

@@ -15,6 +15,7 @@ import { createCommands, normalizeCommand } from '../app/commands.js';
 import { connect, serve } from '../app/control.js';
 import { EngineClient } from '../app/engine-client.js';
 import { copyMacro } from '../app/library.js';
+import { loadMacro } from '../app/macro-loader.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const example = join(root, 'examples', 'bar-minigame');
@@ -33,10 +34,11 @@ before(async () => {
   let current = null;
   commands = createCommands({
     engine,
-    async ensureSession(target) {
-      if (current === target) return;
-      await engine.call('session.start', { target });
-      current = target;
+    async ensureSession(target, scenario) {
+      const key = `${target} ${JSON.stringify(scenario ?? null)}`;
+      if (current === key) return;
+      await engine.call('session.start', { target, scenario });
+      current = key;
     },
   });
 });
@@ -211,6 +213,22 @@ test('a demonstration becomes routes that a macro walks', async () => {
   assert.equal(run.end.reason, 'stopped', JSON.stringify(run.end));
   assert.ok(run.score.world.sales >= 1, JSON.stringify(run.score));
   assert.equal(run.timeouts, 0, JSON.stringify(run.logs));
+});
+
+test('templates are saved, matched and loaded with the macro', async () => {
+  // The fishing trip's world: the character standing at the spawn.
+  const trip = copyMacro(join(root, 'examples', 'fishing-trip'), dir, { author: 'tester' });
+  const saved = await commands.saveTemplate({ folder: trip, target: 'sim', name: 'me', region: 'spawn' });
+  assert.ok(fs.existsSync(saved.file));
+  assert.equal(saved.viewportHeight, 540);
+  assert.deepEqual(await commands.templates({ folder: trip }), [{ name: 'me', viewportHeight: 540, region: 'spawn', file: saved.file }]);
+  commands.setRegion({ folder: trip, name: 'middle', anchor: 'center', x: 0, y: 0, w: 1, h: 0.9 });
+  const found = await commands.detect({ folder: trip, target: 'sim', region: 'middle', template: 'me' });
+  assert.ok(found.template.score > 0.95, JSON.stringify(found.template));
+  await assert.rejects(commands.detect({ folder: trip, target: 'sim', region: 'middle', template: 'nope' }), /no template "nope"/);
+  const spec = await loadMacro(trip);
+  assert.equal(spec.templates.me.viewportHeight, 540);
+  assert.ok(spec.templates.me.png.length > 100);
 });
 
 test('the fishing loop example recovers on the simulator it describes', async () => {
