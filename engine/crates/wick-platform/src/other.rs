@@ -60,3 +60,9 @@ pub fn start_hotkey(
 ) -> Result<(), String> {
     Err(UNSUPPORTED.into())
 }
+
+pub fn start_listener() -> Result<(), String> {
+    Err(UNSUPPORTED.into())
+}
+
+pub fn stop_listener() {}

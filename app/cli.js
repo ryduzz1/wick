@@ -24,6 +24,9 @@ Usage: wick <command> [options]
   probe --track NAME:REGION:HEX[:TOL] [--track ...] [--clicks N --every MS --start MS]
         [--input '{"time":0,"command":{"t":"press","key":"e"}}'] [--seconds S] [--hz N]
                                  Follow colors while sending timed input
+  record [--seconds S] [--fps N] [--region R] [--you] [--run]
+                                 Save keyframes, change scores and inputs. --you also
+                                 logs your clicks and keys; --run runs the macro meanwhile
   regions                        List the macro's regions
   region set NAME [--anchor A] [--x N] [--y N] [--w N] [--h N]
   region remove NAME
@@ -44,7 +47,7 @@ Options for every command:
 
 Output is JSON. Input only reaches the target while it has focus; F8 stops everything.`;
 
-const BOOLEAN = new Set(['local', 'live', 'help', 'mask', 'exact']);
+const BOOLEAN = new Set(['local', 'live', 'help', 'mask', 'exact', 'you', 'run']);
 const REPEATED = new Set(['track', 'input']);
 
 export function parseArgs(argv) {
@@ -179,6 +182,17 @@ export function toRequest(positional, flags, cwd = process.cwd()) {
         clicks: flags.clicks ? { count: number(flags.clicks), every: number(flags.every), start: number(flags.start), at: parseAt(flags.at), button: flags.button } : undefined,
         seconds: number(flags.seconds) ?? 3,
         sampleHz: number(flags.hz) ?? 60,
+      }];
+    case 'record':
+      return ['record', {
+        ...base,
+        region: flags.region,
+        seconds: number(flags.seconds) ?? 5,
+        fps: number(flags.fps) ?? 10,
+        you: Boolean(flags.you),
+        run: Boolean(flags.run),
+        exact: Boolean(flags.exact),
+        live: Boolean(flags.live),
       }];
     case 'regions':
       needFolder();

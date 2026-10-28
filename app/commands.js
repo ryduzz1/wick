@@ -225,6 +225,31 @@ export function createCommands(host) {
       return { target: t, ...(await engine.call('session.probe', spec)) };
     },
 
+    async record({ folder, target, region, seconds = 5, fps = 10, you = false, run = false, exact = false, live = false, scenario } = {}) {
+      const t = pickTarget(target, folder);
+      const { regions, manifest } = macroInfo(folder);
+      const dir = path.join(outDir(folder, 'recordings'), `${t}-${stamp()}`);
+      const spec = { dir, seconds: Number(seconds), fps: Number(fps), region: regionFor(region, regions), you: Boolean(you) };
+      const macro = run ? await loadMacro(folder, { settings: host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact) }) : undefined;
+      const note = 'record.jsonl has one line per sample ({ t, change, frame? }) and per input ({ t, by: "wick"|"you", input, ... }); times are ms from the start and click positions are fractions of the recorded area. contact.png shows the frames listed in "sheet", left to right, top to bottom.';
+      if (t === 'sim' && !live) return { target: t, ...(await engine.call('sim.record', { ...spec, macro, scenario })), note };
+      await onTarget(t);
+      notify('log', { text: `Agent started a ${spec.seconds}s recording of ${t}${you ? ', including your clicks and keys' : ''}.` });
+      if (macro) {
+        if (host.busyTarget?.()) throw new MacroError('A macro is already running. Stop it first, or record without --run.');
+        await engine.call('macro.run', { macro });
+        activeRun = { id: macro.id, target: t };
+      }
+      try {
+        return { target: t, ...(await engine.call('session.record', spec)), note };
+      } finally {
+        if (macro) {
+          activeRun = null;
+          await engine.call('macro.stop').catch(() => {});
+        }
+      }
+    },
+
     regions({ folder }) {
       return macroInfo(folder).regions;
     },
@@ -308,6 +333,7 @@ export function createCommands(host) {
 
     async stop() {
       await engine.call('macro.stop').catch(() => {});
+      await engine.call('session.stopRecord').catch(() => {});
       return { stopped: true };
     },
 

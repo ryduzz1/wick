@@ -8,10 +8,11 @@ use std::sync::{mpsc, Arc, Mutex};
 use serde_json::{json, Value};
 use wick_engine::input::Command;
 use wick_engine::probe::{DetectSpec, ProbeSpec};
+use wick_engine::record::RecordSpec;
 use wick_engine::region::RegionSpec;
 use wick_engine::rpc::Emitter;
 use wick_engine::run::MacroSpec;
-use wick_engine::session::{probe_headless, run_headless, Msg, Session, TARGETS};
+use wick_engine::session::{probe_headless, record_headless, run_headless, Msg, Session, TARGETS};
 use wick_engine::sim::Scenario;
 use wick_engine::window_target::WindowKind;
 
@@ -125,6 +126,10 @@ impl Engine {
                 self.with_session(|s| s.send(Msg::Detect(Box::new(spec), tx)))?;
                 rx.recv().map_err(|_| "The session stopped".to_string())?
             }
+            "session.stopRecord" => {
+                self.with_session(|s| s.send(Msg::StopRecord))?;
+                Ok(json!(true))
+            }
             "session.act" => {
                 let command: Command = param(params, "command")?;
                 let regions: Option<HashMap<String, RegionSpec>> = param(params, "regions")?;
@@ -232,6 +237,39 @@ fn main() {
                     }
                     Err(e) => emitter.reply(&id, Err(e)),
                 }
+            }
+            "session.record" => {
+                let started = (|| {
+                    let spec: RecordSpec = serde_json::from_value(params.clone())
+                        .map_err(|e| format!("Bad record request: {e}"))?;
+                    let (tx, rx) = mpsc::channel();
+                    engine.with_session(|s| s.send(Msg::Record(Box::new(spec), tx)))?;
+                    Ok::<_, String>(rx)
+                })();
+                match started {
+                    Ok(rx) => {
+                        let emitter = emitter.clone();
+                        std::thread::spawn(move || {
+                            let result = rx
+                                .recv()
+                                .unwrap_or_else(|_| Err("The session stopped".into()));
+                            emitter.reply(&id, result);
+                        });
+                    }
+                    Err(e) => emitter.reply(&id, Err(e)),
+                }
+            }
+            "sim.record" => {
+                let emitter = emitter.clone();
+                std::thread::spawn(move || {
+                    let result = (|| {
+                        let spec: RecordSpec = serde_json::from_value(params.clone())
+                            .map_err(|e| format!("Bad record request: {e}"))?;
+                        let macro_spec: Option<MacroSpec> = param(&params, "macro")?;
+                        record_headless(spec, scenario(&params)?.unwrap_or_default(), macro_spec)
+                    })();
+                    emitter.reply(&id, result);
+                });
             }
             "sim.probe" => {
                 let emitter = emitter.clone();

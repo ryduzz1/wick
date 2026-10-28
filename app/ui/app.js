@@ -2,6 +2,7 @@
 // controls and log.
 
 import { LiveView, parseHex, rectRegion } from './live.js';
+import { TraceGraph } from './trace.js';
 
 const $ = (id) => document.getElementById(id);
 const wick = window.wick;
@@ -289,6 +290,10 @@ async function select(m) {
     toast('A macro is running', 'Stop it before switching to another macro.');
     return;
   }
+  if (state.selected?.folder !== m.folder && !state.running) {
+    trace.clear();
+    $('traceCard').classList.add('hidden');
+  }
   state.selected = m;
   renderHeader(m);
   $('simResults').classList.add('hidden');
@@ -524,6 +529,30 @@ function showMacroStats(m) {
 
 // MARK: Actions
 
+// MARK: Trace
+
+const TRACE_HINT = $('traceHover').textContent;
+const trace = new TraceGraph($('traceCanvas'), {
+  onHover(text) {
+    const el = $('traceHover');
+    el.textContent = text || TRACE_HINT;
+    el.classList.toggle('muted', !text);
+  },
+  onLegend(items) {
+    const legend = $('traceLegend');
+    legend.replaceChildren();
+    for (const item of items) {
+      const span = document.createElement('span');
+      span.innerHTML = `<i class="${item.style}"></i>`;
+      span.append(`${item.region} ${item.color}`);
+      legend.append(span);
+    }
+    const inputs = document.createElement('span');
+    inputs.innerHTML = '<i class="input"></i>inputs';
+    legend.append(inputs);
+  },
+});
+
 async function run() {
   const m = state.selected;
   if (!m || !state.target) return;
@@ -531,6 +560,7 @@ async function run() {
     await saveSettings();
     state.running = { folder: m.folder, target: state.target };
     state.lastStats = null;
+    trace.clear();
     setRunState('running', 'Starting…');
     log(`Started on ${TARGET_LABELS[state.target]}.`);
     await call('run', { folder: m.folder, target: state.target, settings: currentSettings() });
@@ -763,6 +793,10 @@ wick.onEvent((method, params) => {
       break;
     case 'macro.log':
       log(params.text);
+      break;
+    case 'macro.trace':
+      trace.push(params);
+      $('traceCard').classList.remove('hidden');
       break;
     case 'macro.end':
       showMacroStats(params);

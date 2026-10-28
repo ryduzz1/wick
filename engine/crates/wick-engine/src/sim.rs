@@ -218,6 +218,8 @@ impl BarGame {
 
 pub struct SimTarget {
     pub game: BarGame,
+    /// Input "the person" made, for tests of recordings.
+    pub heard: Vec<crate::target::HeardInput>,
     frame: Frame,
     realtime: bool,
     started: Instant,
@@ -228,6 +230,7 @@ impl SimTarget {
         let frame = Frame::new(scenario.width, scenario.height, BACKGROUND);
         SimTarget {
             game: BarGame::new(scenario),
+            heard: Vec::new(),
             frame,
             realtime,
             started: Instant::now(),
@@ -283,6 +286,10 @@ impl Target for SimTarget {
 
     fn status(&mut self) -> Value {
         json!({ "found": true, "focused": true, "window": { "width": self.frame.width, "height": self.frame.height } })
+    }
+
+    fn heard(&mut self) -> Vec<crate::target::HeardInput> {
+        std::mem::take(&mut self.heard)
     }
 
     fn score(&self) -> Option<Value> {

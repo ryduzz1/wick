@@ -70,6 +70,8 @@ pub struct MacroRun {
     trackers: Vec<Tracker>,
     permissions: HashSet<String>,
     pub input: InputState,
+    /// While set, each frame's tracker positions are kept for the app's graph.
+    pub trace: Option<Vec<Value>>,
     started_ms: f64,
     viewport: Rect,
     pub loops: u64,
@@ -112,6 +114,7 @@ impl MacroRun {
             runtime,
             trackers: Vec::new(),
             input,
+            trace: None,
             started_ms: target.now_ms(),
             viewport: target.viewport(),
             loops: 0,
@@ -197,6 +200,10 @@ impl MacroRun {
                     self.trackers[i].update(frame, rect, now);
                 }
             }
+            if let Some(trace) = &mut self.trace {
+                let points: Vec<Value> = self.trackers.iter().map(|t| t.trace_point()).collect();
+                trace.push(json!([now.round(), points]));
+            }
         }
         let mut states = Map::new();
         for t in &self.trackers {
@@ -244,6 +251,17 @@ impl MacroRun {
             "dropped": self.input.dropped,
             "score": target.score(),
         })
+    }
+
+    /// What each traced tracker follows, in trace order.
+    pub fn trace_labels(&self) -> Value {
+        self.trackers
+            .iter()
+            .map(|t| {
+                let [r, g, b] = t.query.rgb;
+                json!({ "id": t.id, "region": t.region, "color": format!("#{r:02x}{g:02x}{b:02x}") })
+            })
+            .collect()
     }
 
     /// Regions and tracker results in frame fractions, for the live view.

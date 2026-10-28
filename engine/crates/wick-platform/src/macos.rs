@@ -11,6 +11,7 @@ pub const PLATFORM: &str = "macos";
 
 type FrameCallback = extern "C" fn(*mut c_void, *const u8, usize, usize, usize);
 type HotkeyCallback = extern "C" fn(*mut c_void);
+type InputCallback = extern "C" fn(*mut c_void, c_int, c_int, c_int, f64, f64);
 
 extern "C" {
     fn wick_mac_free(p: *mut c_char);
@@ -33,6 +34,7 @@ extern "C" {
     fn wick_mac_mouse_button(button: c_int, down: c_int) -> c_int;
     fn wick_mac_key(code: u16, down: c_int) -> c_int;
     fn wick_mac_hotkey_start(code: u16, callback: HotkeyCallback, context: *mut c_void) -> c_int;
+    fn wick_mac_listen(on: c_int, callback: InputCallback, context: *mut c_void) -> c_int;
 }
 
 /// Takes ownership of a string returned by the native layer.
@@ -234,4 +236,41 @@ pub fn start_hotkey(
         drop(unsafe { Box::from_raw(context as *mut Box<dyn Fn() + Send + Sync>) });
         Err("The kill-switch hotkey needs Accessibility permission.".into())
     }
+}
+
+extern "C" fn on_input(
+    _context: *mut c_void,
+    kind: c_int,
+    code: c_int,
+    down: c_int,
+    x: f64,
+    y: f64,
+) {
+    let down = down != 0;
+    let input = if kind == 0 {
+        match crate::keys::mac_name(code as u32) {
+            Some(name) => crate::UserInput::Key { name, down },
+            None => return,
+        }
+    } else {
+        let button = match code {
+            0 => MouseButton::Left,
+            1 => MouseButton::Right,
+            _ => MouseButton::Middle,
+        };
+        crate::UserInput::Button { button, down, x, y }
+    };
+    crate::heard(input);
+}
+
+pub fn start_listener() -> Result<(), String> {
+    if unsafe { wick_mac_listen(1, on_input, std::ptr::null_mut()) } != 0 {
+        Ok(())
+    } else {
+        Err("Hearing your input needs Accessibility permission.".into())
+    }
+}
+
+pub fn stop_listener() {
+    unsafe { wick_mac_listen(0, on_input, std::ptr::null_mut()) };
 }

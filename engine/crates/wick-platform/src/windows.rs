@@ -13,6 +13,7 @@ use windows::Graphics::Capture::{
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Graphics::DirectX::DirectXPixelFormat;
 use windows::Win32::Foundation::{CloseHandle, HMODULE, HWND, LPARAM, POINT, RECT};
+use windows::Win32::Foundation::{LRESULT, WPARAM};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
 use windows::Win32::Graphics::Direct3D11::{
     D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D, D3D11_BIND_FLAG,
@@ -28,6 +29,7 @@ use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
+use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::System::WinRT::Direct3D11::{
     CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
 };
@@ -44,8 +46,12 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     MOUSEEVENTF_RIGHTUP, MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClientRect, GetForegroundWindow, GetMessageW, GetWindowTextW,
-    GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetCursorPos, MSG, WM_HOTKEY,
+    CallNextHookEx, EnumWindows, GetClientRect, GetForegroundWindow, GetMessageW, GetWindowTextW,
+    GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostThreadMessageW, SetCursorPos,
+    SetWindowsHookExW, UnhookWindowsHookEx, HC_ACTION, KBDLLHOOKSTRUCT, LLKHF_INJECTED,
+    LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_HOTKEY, WM_KEYDOWN,
+    WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_QUIT, WM_RBUTTONDOWN,
+    WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
 use crate::{Bounds, FrameSink, MouseButton, Permissions, WindowInfo};
@@ -433,4 +439,93 @@ pub fn start_hotkey(
     ready_rx
         .recv()
         .unwrap_or_else(|_| Err("The hotkey thread stopped".into()))
+}
+
+// MARK: Input listener
+
+/// The thread running the low-level hooks, while listening.
+static LISTENER: Mutex<Option<u32>> = Mutex::new(None);
+
+unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if code == HC_ACTION as i32 {
+        let k = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
+        let down = match wparam.0 as u32 {
+            WM_KEYDOWN | WM_SYSKEYDOWN => Some(true),
+            WM_KEYUP | WM_SYSKEYUP => Some(false),
+            _ => None,
+        };
+        if let (Some(down), false) = (down, k.flags.contains(LLKHF_INJECTED)) {
+            if let Some(name) = crate::keys::windows_name(k.vkCode) {
+                crate::heard(crate::UserInput::Key { name, down });
+            }
+        }
+    }
+    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+unsafe extern "system" fn mouse_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if code == HC_ACTION as i32 {
+        let m = unsafe { &*(lparam.0 as *const MSLLHOOKSTRUCT) };
+        let button = match wparam.0 as u32 {
+            WM_LBUTTONDOWN => Some((MouseButton::Left, true)),
+            WM_LBUTTONUP => Some((MouseButton::Left, false)),
+            WM_RBUTTONDOWN => Some((MouseButton::Right, true)),
+            WM_RBUTTONUP => Some((MouseButton::Right, false)),
+            WM_MBUTTONDOWN => Some((MouseButton::Middle, true)),
+            WM_MBUTTONUP => Some((MouseButton::Middle, false)),
+            _ => None,
+        };
+        if let (Some((button, down)), true) = (button, m.flags & LLMHF_INJECTED == 0) {
+            crate::heard(crate::UserInput::Button {
+                button,
+                down,
+                x: f64::from(m.pt.x),
+                y: f64::from(m.pt.y),
+            });
+        }
+    }
+    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+pub fn start_listener() -> Result<(), String> {
+    let mut listener = LISTENER.lock().unwrap();
+    if listener.is_some() {
+        return Ok(());
+    }
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("wick-listen".into())
+        .spawn(move || unsafe {
+            let hooks = (
+                SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook), None, 0),
+                SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook), None, 0),
+            );
+            let (keyboard, mouse) = match hooks {
+                (Ok(k), Ok(m)) => (k, m),
+                (k, m) => {
+                    for hook in [k, m].into_iter().flatten() {
+                        let _ = UnhookWindowsHookEx(hook);
+                    }
+                    let _ = ready_tx.send(Err("Windows didn't allow the input hooks.".to_string()));
+                    return;
+                }
+            };
+            let _ = ready_tx.send(Ok(GetCurrentThreadId()));
+            let mut msg = MSG::default();
+            while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+            let _ = UnhookWindowsHookEx(keyboard);
+            let _ = UnhookWindowsHookEx(mouse);
+        })
+        .map_err(|e| e.to_string())?;
+    let thread = ready_rx
+        .recv()
+        .unwrap_or_else(|_| Err("The input listener stopped".into()))?;
+    *listener = Some(thread);
+    Ok(())
+}
+
+pub fn stop_listener() {
+    if let Some(thread) = LISTENER.lock().unwrap().take() {
+        let _ = unsafe { PostThreadMessageW(thread, WM_QUIT, WPARAM(0), LPARAM(0)) };
+    }
 }

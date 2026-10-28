@@ -227,8 +227,12 @@ static CGPoint cursor_location(void) {
     return p;
 }
 
+// Tags Wick's own events so the input listener can leave them out.
+#define WICK_EVENT_TAG 0x5749434B
+
 static int post(CGEventRef e) {
     if (!e) return 0;
+    CGEventSetIntegerValueField(e, kCGEventSourceUserData, WICK_EVENT_TAG);
     CGEventPost(kCGHIDEventTap, e);
     CFRelease(e);
     return 1;
@@ -307,5 +311,77 @@ int wick_mac_hotkey_start(uint16_t code, wick_hotkey_cb callback, void *context)
       CGEventTapEnable(hotkey_tap, true);
       CFRunLoopRun();
     }];
+    return 1;
+}
+
+// MARK: - Input listener
+
+// Hears the person's clicks and key presses for recordings. It passes every
+// event through unchanged; it uses a default (not listen-only) tap so the
+// Accessibility permission Wick already has is enough.
+typedef void (*wick_input_cb)(void *context, int kind, int code, int down, double x, double y);
+
+static CFMachPortRef listen_tap = NULL;
+static volatile int listen_on = 0;
+static wick_input_cb listen_callback = NULL;
+static void *listen_context = NULL;
+
+static CGEventRef listen_event(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *refcon) {
+    if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
+        if (listen_tap && listen_on) CGEventTapEnable(listen_tap, true);
+        return event;
+    }
+    if (!listen_on || CGEventGetIntegerValueField(event, kCGEventSourceUserData) == WICK_EVENT_TAG) return event;
+    CGPoint p = CGEventGetLocation(event);
+    switch (type) {
+    case kCGEventKeyDown:
+    case kCGEventKeyUp:
+        listen_callback(listen_context, 0, (int)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode),
+                        type == kCGEventKeyDown, 0, 0);
+        break;
+    case kCGEventLeftMouseDown:
+    case kCGEventLeftMouseUp:
+        listen_callback(listen_context, 1, 0, type == kCGEventLeftMouseDown, p.x, p.y);
+        break;
+    case kCGEventRightMouseDown:
+    case kCGEventRightMouseUp:
+        listen_callback(listen_context, 1, 1, type == kCGEventRightMouseDown, p.x, p.y);
+        break;
+    case kCGEventOtherMouseDown:
+    case kCGEventOtherMouseUp:
+        if (CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber) == 2)
+            listen_callback(listen_context, 1, 2, type == kCGEventOtherMouseDown, p.x, p.y);
+        break;
+    default:
+        break;
+    }
+    return event;
+}
+
+// Starts (on = 1) or pauses (on = 0) the listener. Returns 1 on success.
+int wick_mac_listen(int on, wick_input_cb callback, void *context) {
+    if (!on) {
+        listen_on = 0;
+        if (listen_tap) CGEventTapEnable(listen_tap, false);
+        return 1;
+    }
+    listen_callback = callback;
+    listen_context = context;
+    if (!listen_tap) {
+        CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp) |
+                           CGEventMaskBit(kCGEventLeftMouseDown) | CGEventMaskBit(kCGEventLeftMouseUp) |
+                           CGEventMaskBit(kCGEventRightMouseDown) | CGEventMaskBit(kCGEventRightMouseUp) |
+                           CGEventMaskBit(kCGEventOtherMouseDown) | CGEventMaskBit(kCGEventOtherMouseUp);
+        listen_tap = CGEventTapCreate(kCGSessionEventTap, kCGTailAppendEventTap, kCGEventTapOptionDefault, mask,
+                                      listen_event, NULL);
+        if (!listen_tap) return 0;
+        CFRunLoopSourceRef source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, listen_tap, 0);
+        [NSThread detachNewThreadWithBlock:^{
+          CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
+          CFRunLoopRun();
+        }];
+    }
+    listen_on = 1;
+    CGEventTapEnable(listen_tap, true);
     return 1;
 }

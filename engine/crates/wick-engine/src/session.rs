@@ -13,8 +13,9 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use crate::frame::Frame;
-use crate::input::{Command, InputState};
+use crate::input::{Action, Command, InputState};
 use crate::probe::{self, DetectSpec, Probe, ProbeSpec};
+use crate::record::{RecordSpec, Recorder};
 use crate::region::RegionSpec;
 use crate::rpc::Emitter;
 use crate::run::{MacroRun, MacroSpec, RunEnd};
@@ -24,6 +25,7 @@ use crate::window_target::{WindowKind, WindowTarget};
 
 const PREVIEW_EVERY: Duration = Duration::from_millis(125);
 const STATS_EVERY: Duration = Duration::from_millis(250);
+const TRACE_EVERY: Duration = Duration::from_millis(50);
 const PREVIEW_WIDTH: usize = 480;
 const FRAME_WAIT: Duration = Duration::from_millis(50);
 
@@ -59,6 +61,9 @@ pub enum Msg {
     /// One input from an agent, with the regions its position may refer to.
     Act(Box<Command>, HashMap<String, RegionSpec>, Reply),
     Probe(Box<ProbeSpec>, Reply),
+    Record(Box<RecordSpec>, Reply),
+    /// Ends a recording early, keeping what it has.
+    StopRecord,
     Close,
 }
 
@@ -136,6 +141,10 @@ fn session_loop(
 ) {
     let mut run: Option<(MacroRun, u64)> = None;
     let mut probe: Option<(Probe, Reply)> = None;
+    let mut recording: Option<(Recorder, Reply)> = None;
+    // Inputs the running macro sent since the last trace event.
+    let mut trace_inputs: Vec<Value> = Vec::new();
+    let mut last_trace = Instant::now();
     // Single inputs from agents, gated and released like a macro's.
     let mut agent = InputState::default();
     let mut agent_epoch = kills.load(Ordering::SeqCst);
@@ -157,11 +166,13 @@ fn session_loop(
                         );
                     }
                     match MacroRun::start(*spec, target.as_ref()) {
-                        Ok(r) => {
+                        Ok(mut r) => {
                             emitter.event(
                                 "macro.state",
                                 json!({ "state": "running", "id": r.spec.id }),
                             );
+                            r.trace = Some(Vec::new());
+                            r.input.logging = true;
                             run = Some((r, kills.load(Ordering::SeqCst)));
                             let _ = reply.send(Ok(()));
                         }
@@ -206,7 +217,27 @@ fn session_loop(
                         }
                     }
                 }
+                Msg::Record(spec, reply) => {
+                    if recording.is_some() {
+                        let _ = reply.send(Err("A recording is already running.".into()));
+                    } else {
+                        match Recorder::start(*spec, target.as_mut()) {
+                            Ok(r) => recording = Some((r, reply)),
+                            Err(e) => {
+                                let _ = reply.send(Err(e));
+                            }
+                        }
+                    }
+                }
+                Msg::StopRecord => {
+                    if let Some((mut r, reply)) = recording.take() {
+                        let _ = reply.send(r.abort(target.as_mut()));
+                    }
+                }
                 Msg::Close => {
+                    if let Some((mut r, reply)) = recording.take() {
+                        let _ = reply.send(r.abort(target.as_mut()));
+                    }
                     if let Some((mut p, reply)) = probe.take() {
                         p.abort(target.as_mut());
                         let _ = reply.send(Err("The session closed".into()));
@@ -255,6 +286,7 @@ fn session_loop(
             frames += 1;
             last_frame = frame.clone();
         }
+        agent.logging = recording.is_some();
         {
             let (now, focused) = (target.now_ms(), target.focused());
             let _ = agent.flush(now, focused, &mut |a| target.send(a));
@@ -273,10 +305,50 @@ fn session_loop(
                 }
             }
         }
+        let mut run_sent = Vec::new();
         if let Some((r, _)) = &mut run {
-            if let Some(end) = r.tick(target.as_mut(), frame.as_deref(), &mut emit) {
+            let end = r.tick(target.as_mut(), frame.as_deref(), &mut emit);
+            run_sent = r.input.take_log();
+            if let Some(end) = end {
                 end_run(r, end, target.as_mut(), &emitter);
                 run = None;
+            }
+        }
+        for (t, action) in &run_sent {
+            match action {
+                Action::Button { button, down: true } => trace_inputs.push(json!([
+                    t.round(),
+                    format!("{button:?}").to_ascii_lowercase()
+                ])),
+                Action::Key { name, down: true } => trace_inputs.push(json!([t.round(), name])),
+                _ => {}
+            }
+        }
+        if last_trace.elapsed() >= TRACE_EVERY {
+            last_trace = Instant::now();
+            if let Some((r, _)) = &mut run {
+                let samples = r.trace.as_mut().map(std::mem::take).unwrap_or_default();
+                if !samples.is_empty() || !trace_inputs.is_empty() {
+                    emitter.event(
+                        "macro.trace",
+                        json!({ "samples": samples, "inputs": std::mem::take(&mut trace_inputs), "trackers": r.trace_labels() }),
+                    );
+                }
+            } else {
+                trace_inputs.clear();
+            }
+        }
+        if let Some((rec, _)) = &mut recording {
+            let mut sent = agent.take_log();
+            sent.extend(run_sent);
+            let done = rec.tick(target.as_mut(), frame.as_deref(), &sent);
+            if !matches!(done, Ok(None)) {
+                let (mut rec, reply) = recording.take().unwrap();
+                let result = done.map(|r| r.unwrap_or(Value::Null));
+                if result.is_err() {
+                    let _ = rec.abort(target.as_mut());
+                }
+                let _ = reply.send(result);
             }
         }
         busy += started.elapsed();
@@ -353,6 +425,46 @@ pub fn probe_headless(spec: ProbeSpec, scenario: Scenario) -> Result<Value, Stri
     loop {
         let frame = target.next_frame(Duration::ZERO);
         if let Some(result) = probe.tick(&mut target, frame.as_deref())? {
+            return Ok(result);
+        }
+    }
+}
+
+/// Records the simulator as fast as possible, running a macro meanwhile if
+/// one is given.
+pub fn record_headless(
+    spec: RecordSpec,
+    scenario: Scenario,
+    macro_spec: Option<MacroSpec>,
+) -> Result<Value, String> {
+    let mut target = SimTarget::new(scenario, false);
+    let mut run = macro_spec
+        .map(|m| MacroRun::start(m, &target))
+        .transpose()?;
+    let mut recorder = Recorder::start(spec, &mut target)?;
+    let mut end = None;
+    loop {
+        let frame = target.next_frame(Duration::ZERO);
+        let mut sent = Vec::new();
+        if let Some(r) = &mut run {
+            r.input.logging = true;
+            if let Some(e) = r.tick(&mut target, frame.as_deref(), &mut |_, _| {}) {
+                end = Some(e.to_json());
+                r.finish(&mut target);
+                sent = r.input.take_log();
+                run = None;
+            } else {
+                sent = r.input.take_log();
+            }
+        }
+        if let Some(mut result) = recorder.tick(&mut target, frame.as_deref(), &sent)? {
+            if let Some(mut r) = run {
+                r.finish(&mut target);
+                result["run"] = r.stats(&target);
+            }
+            if let Some(end) = end {
+                result["end"] = end;
+            }
             return Ok(result);
         }
     }

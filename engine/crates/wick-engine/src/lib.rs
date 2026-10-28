@@ -4,6 +4,7 @@ pub mod frame;
 pub mod human;
 pub mod input;
 pub mod probe;
+pub mod record;
 pub mod region;
 pub mod rpc;
 pub mod run;

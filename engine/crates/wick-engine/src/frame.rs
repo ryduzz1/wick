@@ -106,6 +106,29 @@ impl Frame {
         (w, h, out)
     }
 
+    /// A copy at most `max_width` wide, sampled by nearest pixel.
+    pub fn scaled(&self, max_width: usize) -> Frame {
+        if self.width <= max_width {
+            return self.clone();
+        }
+        let w = max_width.max(1);
+        let h = (self.height * w / self.width).max(1);
+        let mut data = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            let row = (y * self.height / h) * self.stride;
+            for x in 0..w {
+                let i = row + (x * self.width / w) * 4;
+                data.extend_from_slice(&self.data[i..i + 4]);
+            }
+        }
+        Frame {
+            width: w,
+            height: h,
+            stride: w * 4,
+            data,
+        }
+    }
+
     /// A copy of one rectangle of the frame.
     pub fn crop(&self, rect: Rect) -> Frame {
         let (x0, y0, x1, y1) = rect.pixel_bounds(self.width, self.height);

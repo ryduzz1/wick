@@ -47,6 +47,22 @@ const TOOLS = [
     },
     required: ['track'],
   },
+  {
+    name: 'wick_record',
+    method: 'record',
+    description: 'Record the target window for some seconds: keyframes (PNG), a change score per sample and every input in record.jsonl, and a contact sheet of the moments that changed most (returned as an image). With you: true, the person\'s own clicks and key presses in the game window are logged too, so you can see what they did; ask them to play while it records. With run: true, the macro runs meanwhile.',
+    properties: {
+      folder,
+      target,
+      region,
+      seconds: { type: 'number', description: 'How long, up to 60 (default 5).' },
+      fps: { type: 'number', description: 'Samples per second, 1 to 30 (default 10).' },
+      you: { type: 'boolean' },
+      run: { type: 'boolean' },
+      exact: { type: 'boolean' },
+      live: { type: 'boolean', description: 'On sim, record in real time instead of instantly.' },
+    },
+  },
   { name: 'wick_regions', method: 'regions', description: 'The macro\'s regions. x and y place each region\'s center relative to its anchor; x, y, w and h are in viewport heights.', properties: { folder } },
   {
     name: 'wick_set_region',
@@ -68,7 +84,7 @@ const TOOLS = [
   { name: 'wick_new_macro', method: 'newMacro', description: 'Create a new macro folder from the starter template, in the Wick library unless dir is given.', properties: { name: { type: 'string' }, target, dir: { type: 'string' } }, required: ['name'] },
 ];
 
-const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate']);
+const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'record', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate']);
 
 /** Tool results as MCP content: the JSON, plus any PNG the command saved. */
 function content(result) {

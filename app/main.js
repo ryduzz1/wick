@@ -329,6 +329,19 @@ async function smokeReport() {
   const smokeFolder = path.join(libraryDir(), 'smoke-test');
   shown.movedRegion = fs.existsSync(smokeFolder) ? library.readRegions(smokeFolder).area : null;
   shown.matches = await js(`document.getElementById('matchText').textContent`);
+  // Run the new macro on the simulator briefly: the trace graph should fill.
+  // For a screenshot of the graph, run the bar example instead.
+  if (process.env.WICK_SMOKE_DIALOG === 'trace') {
+    await js(`[...document.querySelectorAll('#macroList button')].find((b) => b.textContent.includes('Bar minigame'))?.click()`);
+    await sleep(800);
+  }
+  await js(`document.getElementById('runButton').click()`);
+  await sleep(process.env.WICK_SMOKE_DIALOG === 'trace' ? 6000 : 1500);
+  shown.trace = await js(`({ visible: !document.getElementById('traceCard').classList.contains('hidden'), legend: document.getElementById('traceLegend').textContent })`);
+  if (process.env.WICK_SMOKE_DIALOG !== 'trace') {
+    await js(`document.getElementById('stopButton').click()`);
+    await sleep(500);
+  }
   // Settings: changing precision saves it.
   await js(`document.getElementById('openSettings').click()`);
   await sleep(300);
@@ -359,7 +372,7 @@ async function smokeReport() {
   }
   const ok = errors.length === 0 && shown.engine === 'Engine running' && Boolean(shown.macro) && shown.previewDrawn &&
     shown.created === 'Smoke test' && shown.regions.includes('area') && shown.movedRegion?.x > 0 && /^[1-9]\d* px/.test(shown.matches) &&
-    shown.cli?.usedApp && shown.cli?.saved && shown.input?.precision === 0.7;
+    shown.cli?.usedApp && shown.cli?.saved && shown.input?.precision === 0.7 && shown.trace?.visible;
   process.stdout.write(`WICK_SMOKE ${JSON.stringify({ ok, shown, errors })}\n`);
   app.exit(ok ? 0 : 1);
 }

@@ -97,6 +97,18 @@ test('act sends input to the simulator', async () => {
   assert.equal(r.sent, 2, 'move and press now; the release comes later');
 });
 
+test('record saves keyframes, a log and a contact sheet', async () => {
+  const r = await commands.record({ folder, target: 'sim', region: 'bar', seconds: 2, fps: 10, run: true });
+  assert.ok(r.dir.startsWith(join(folder, '.wick', 'recordings')));
+  assert.ok(r.samples >= 19, `${r.samples} samples`);
+  assert.ok(r.inputs.wick > 0, 'the macro clicked');
+  assert.ok(fs.existsSync(r.path), 'contact sheet');
+  const lines = fs.readFileSync(r.log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.ok(lines.some((l) => l.by === 'wick' && l.input === 'mouseDown'));
+  assert.ok(lines.filter((l) => l.frame).every((l) => fs.existsSync(join(r.dir, l.frame))));
+  assert.ok(r.run.score.inZone > 0.5, 'the macro played while recording');
+});
+
 test('regions can be set and removed', () => {
   commands.setRegion({ folder, name: 'prompt', anchor: 'center', x: 0.1, w: 0.2, h: 0.05 });
   assert.deepEqual(commands.regions({ folder }).prompt, { anchor: 'center', x: 0.1, y: 0, w: 0.2, h: 0.05 });

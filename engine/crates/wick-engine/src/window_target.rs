@@ -8,7 +8,7 @@ use wick_platform::{Capture, WindowInfo};
 
 use crate::frame::{Frame, Rect};
 use crate::input::Action;
-use crate::target::Target;
+use crate::target::{HeardInput, Target};
 
 /// The test bench window's title. Open it from the Wick app, which gives it a
 /// window of its own; in a browser tab the browser's toolbars would sit inside
@@ -210,6 +210,44 @@ impl Target for WindowTarget {
 
     fn latency(&self) -> f64 {
         DEFAULT_LATENCY
+    }
+
+    fn listen(&mut self, on: bool) -> Result<(), String> {
+        wick_platform::listen_input(on)
+    }
+
+    fn heard(&mut self) -> Vec<HeardInput> {
+        let events = wick_platform::take_input();
+        if events.is_empty() || !self.focused() {
+            return Vec::new();
+        }
+        let (Some(w), (fw, fh)) = (&self.window, self.frame_size) else {
+            return Vec::new();
+        };
+        let (fw, fh) = (fw as f64, fh as f64);
+        events
+            .into_iter()
+            .filter_map(|(at, input)| {
+                let t = at.saturating_duration_since(self.started).as_secs_f64() * 1000.0;
+                match input {
+                    wick_platform::UserInput::Key { name, down } => Some(HeardInput {
+                        t,
+                        action: Action::Key { name, down },
+                        at: None,
+                    }),
+                    wick_platform::UserInput::Button { button, down, x, y } => {
+                        let fx = (x - w.bounds.x) * fw / w.bounds.w;
+                        let fy = (y - w.bounds.y) * fh / w.bounds.h;
+                        // Clicks outside the window aren't part of the game.
+                        ((0.0..fw).contains(&fx) && (0.0..fh).contains(&fy)).then_some(HeardInput {
+                            t,
+                            action: Action::Button { button, down },
+                            at: Some((fx, fy)),
+                        })
+                    }
+                }
+            })
+            .collect()
     }
 
     fn send(&mut self, action: &Action) -> Result<(), String> {

@@ -8,6 +8,16 @@ use serde_json::Value;
 use crate::frame::{Frame, Rect};
 use crate::input::Action;
 
+/// One click or key press the person made in the target window.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HeardInput {
+    /// In target time, like `now_ms`.
+    pub t: f64,
+    pub action: Action,
+    /// Where a click landed, in frame pixels.
+    pub at: Option<(f64, f64)>,
+}
+
 pub trait Target {
     fn id(&self) -> &'static str;
     /// Waits up to `wait` for a frame newer than the last one returned.
@@ -22,6 +32,14 @@ pub trait Target {
     fn send(&mut self, action: &Action) -> Result<(), String>;
     /// Whether the window was found, its size and focus, for the app.
     fn status(&mut self) -> Value;
+    /// Starts or stops hearing the person's own input, for recordings.
+    fn listen(&mut self, _on: bool) -> Result<(), String> {
+        Ok(())
+    }
+    /// The person's input since the last call, while the window had focus.
+    fn heard(&mut self) -> Vec<HeardInput> {
+        Vec::new()
+    }
     /// A target-specific score, if it can judge how well the macro did.
     fn score(&self) -> Option<Value> {
         None

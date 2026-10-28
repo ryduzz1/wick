@@ -240,3 +240,14 @@ dialog .range-label input { padding: 0; border: 0; background: none; }
 dialog .range-label.disabled { opacity: .45; }
 .mono-path { font-family: var(--mono); font-size: 11px; word-break: break-all; color: #c8c8c8; }
 dialog label.check-row + p { margin-top: 8px; }
+
+/* Trace graph */
+.trace-canvas { display: block; width: 100%; height: 140px; background: #191919; border: 1px solid #2c2c2c; border-radius: 8px; cursor: crosshair; }
+.trace-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--muted); }
+.trace-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.trace-legend i { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--text); }
+.trace-legend i.band { height: 8px; border: 1px solid var(--muted); background: #96969629; }
+.trace-legend i.dashed { border-top: 2px dashed var(--muted); }
+.trace-legend i.input { width: 0; height: 10px; border: 0; border-left: 2px solid var(--ember); }
+.trace-foot { margin-top: 8px; min-height: 16px; font-family: var(--mono); }
+.trace-foot .muted { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }

@@ -4,6 +4,10 @@
 //! the window server, frames from the OS capture APIs, and input is posted as
 //! ordinary OS events. Nothing opens, reads or injects into another process.
 
+use std::collections::HashSet;
+use std::sync::Mutex;
+use std::time::Instant;
+
 use serde::Serialize;
 
 #[cfg(target_os = "macos")]
@@ -141,4 +145,71 @@ pub fn start_hotkey(
 ) -> Result<(), String> {
     let code = imp::key_code(name).ok_or_else(|| format!("unknown key \"{name}\""))?;
     imp::start_hotkey(code, on_press)
+}
+
+/// One click or key press the person made, seen while listening.
+#[derive(Clone, Debug, PartialEq)]
+pub enum UserInput {
+    /// `x` and `y` in input coordinates, like [`Bounds`].
+    Button {
+        button: MouseButton,
+        down: bool,
+        x: f64,
+        y: f64,
+    },
+    Key {
+        name: String,
+        down: bool,
+    },
+}
+
+struct Heard {
+    events: Vec<(Instant, UserInput)>,
+    held: HashSet<String>,
+}
+
+static HEARD: Mutex<Option<Heard>> = Mutex::new(None);
+const MAX_HEARD: usize = 20_000;
+
+/// Starts or stops collecting the person's own clicks and key presses, for
+/// recordings. Only buttons and keys, never typed text as such and never
+/// Wick's own input. The OS hook is removed again when listening stops.
+pub fn listen_input(on: bool) -> Result<(), String> {
+    if on {
+        imp::start_listener()?;
+        *HEARD.lock().unwrap() = Some(Heard {
+            events: Vec::new(),
+            held: HashSet::new(),
+        });
+    } else {
+        *HEARD.lock().unwrap() = None;
+        imp::stop_listener();
+    }
+    Ok(())
+}
+
+/// Everything heard since the last call.
+pub fn take_input() -> Vec<(Instant, UserInput)> {
+    match HEARD.lock().unwrap().as_mut() {
+        Some(h) => std::mem::take(&mut h.events),
+        None => Vec::new(),
+    }
+}
+
+/// Called by the platform hooks. Drops key repeats.
+#[allow(dead_code)]
+pub(crate) fn heard(input: UserInput) {
+    let mut guard = HEARD.lock().unwrap();
+    let Some(h) = guard.as_mut() else { return };
+    if let UserInput::Key { name, down } = &input {
+        if *down && !h.held.insert(name.clone()) {
+            return;
+        }
+        if !*down {
+            h.held.remove(name);
+        }
+    }
+    if h.events.len() < MAX_HEARD {
+        h.events.push((Instant::now(), input));
+    }
 }

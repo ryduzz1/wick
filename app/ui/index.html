@@ -94,6 +94,12 @@
           <div class="tile"><b id="tileScore">—</b><span id="tileScoreLabel">In zone (simulator)</span></div>
         </div>
 
+        <section id="traceCard" class="card hidden">
+          <div class="section-title"><h2>Trace</h2><div id="traceLegend" class="trace-legend"></div></div>
+          <canvas id="traceCanvas" class="trace-canvas"></canvas>
+          <div class="trace-foot"><span id="traceHover" class="muted small">Tracker positions across their region over the last 10 seconds. Ticks along the bottom are inputs.</span></div>
+        </section>
+
         <section id="simResults" class="card hidden">
           <div class="section-title"><h2>Simulator test</h2><span id="simSummary" class="count-pill"></span></div>
           <div id="simRows" class="sim-rows"></div>

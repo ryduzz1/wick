@@ -84,6 +84,15 @@ impl Tracker {
         }
     }
 
+    /// `[x, left, right]` as fractions of the region, or null, for traces.
+    pub fn trace_point(&self) -> Value {
+        let r = |v: f64| (v * 1000.0).round() / 1000.0;
+        match self.last {
+            Some(m) => json!([r(m.cx), r(m.left), r(m.right)]),
+            None => Value::Null,
+        }
+    }
+
     /// Current match in frame fractions, for drawing overlays.
     pub fn overlay(&self, frame_w: usize, frame_h: usize) -> Value {
         let region = self.rect.normalized(frame_w, frame_h);

@@ -98,6 +98,9 @@ pub struct InputState {
     held_keys: HashSet<String>,
     /// Makes input look like a person's; `None` sends it exactly.
     human: Option<Humanizer>,
+    /// While set, sent actions are kept for `take_log` (for recordings).
+    pub logging: bool,
+    log: Vec<(f64, Action)>,
     pub sent: u64,
     pub dropped: u64,
 }
@@ -238,6 +241,9 @@ impl InputState {
             }
             send(&action)?;
             self.sent += 1;
+            if self.logging && self.log.len() < 50_000 {
+                self.log.push((now, action.clone()));
+            }
             match &action {
                 Action::Button { button, down: true } => {
                     self.held_buttons.insert(*button);
@@ -258,6 +264,11 @@ impl InputState {
             }
         }
         Ok(())
+    }
+
+    /// Actions sent since the last call, while logging.
+    pub fn take_log(&mut self) -> Vec<(f64, Action)> {
+        std::mem::take(&mut self.log)
     }
 
     /// Releases anything still held, if the target is focused, and clears the schedule.

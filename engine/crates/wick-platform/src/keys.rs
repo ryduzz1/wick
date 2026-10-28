@@ -133,6 +133,60 @@ pub fn windows_code(name: &str) -> Option<u32> {
     Some(code)
 }
 
+/// Every key name Wick knows.
+pub fn names() -> impl Iterator<Item = String> {
+    let letters = ('a'..='z').map(String::from);
+    let digits = ('0'..='9').map(String::from);
+    let functions = (1..=12).map(|n| format!("f{n}"));
+    let named = [
+        "space",
+        "enter",
+        "escape",
+        "tab",
+        "backspace",
+        "shift",
+        "control",
+        "alt",
+        "command",
+        "up",
+        "down",
+        "left",
+        "right",
+        "minus",
+        "equal",
+        "comma",
+        "period",
+        "slash",
+        "semicolon",
+        "quote",
+        "backquote",
+        "leftbracket",
+        "rightbracket",
+        "backslash",
+    ]
+    .into_iter()
+    .map(String::from);
+    letters.chain(digits).chain(functions).chain(named)
+}
+
+/// The Wick name for a macOS key code, if it has one.
+pub fn mac_name(code: u32) -> Option<String> {
+    names().find(|n| mac_code(n) == Some(code))
+}
+
+/// The Wick name for a Windows virtual key, if it has one. Left and right
+/// modifier keys map to the plain name.
+pub fn windows_name(code: u32) -> Option<String> {
+    let code = match code {
+        0xA0 | 0xA1 => 0x10,
+        0xA2 | 0xA3 => 0x11,
+        0xA4 | 0xA5 => 0x12,
+        0x5C => 0x5B,
+        c => c,
+    };
+    names().find(|n| windows_code(n) == Some(code))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,5 +204,21 @@ mod tests {
         assert_eq!(mac_code("f8"), Some(100));
         assert_eq!(mac_code("nope"), None);
         assert_eq!(windows_code("f13"), None);
+    }
+
+    #[test]
+    fn maps_codes_back_to_names() {
+        for name in names() {
+            assert_eq!(
+                mac_name(mac_code(&name).unwrap()).as_deref(),
+                Some(name.as_str())
+            );
+            assert_eq!(
+                windows_name(windows_code(&name).unwrap()).as_deref(),
+                Some(name.as_str())
+            );
+        }
+        assert_eq!(windows_name(0xA1).as_deref(), Some("shift"));
+        assert_eq!(mac_name(9999), None);
     }
 }
