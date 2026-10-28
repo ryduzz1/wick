@@ -189,20 +189,20 @@ fn session_loop(
                     }
                 }
                 Msg::Snapshot(path, region, reply) => {
-                    let result = match &last_frame {
+                    let result = match visible(&last_frame, target.as_ref()) {
                         Some(f) => probe::snapshot(f, target.viewport(), region.as_ref(), &path),
                         None => Err(no_frame(target.as_mut())),
                     };
                     let _ = reply.send(result);
                 }
                 Msg::Detect(spec, reply) => {
-                    let result = match &last_frame {
+                    let result = match visible(&last_frame, target.as_ref()) {
                         Some(f) => probe::detect(f, target.viewport(), &spec),
                         None => Err(no_frame(target.as_mut())),
                     };
                     let _ = reply.send(result);
                 }
-                Msg::Read(region, accurate, reply) => match &last_frame {
+                Msg::Read(region, accurate, reply) => match visible(&last_frame, target.as_ref()) {
                     Some(f) => {
                         let viewport = target.viewport();
                         let rect = match region
@@ -413,13 +413,20 @@ fn session_loop(
     }
 }
 
+/// The last frame, unless the target has lost its window since: a stale
+/// picture would be measured against a window that's no longer there.
+fn visible<'a>(last: &'a Option<Arc<Frame>>, target: &dyn Target) -> Option<&'a Arc<Frame>> {
+    last.as_ref().filter(|_| target.viewport().w > 0.0)
+}
+
 fn no_frame(target: &mut dyn Target) -> String {
     let status = target.status();
     match status["error"].as_str() {
         Some(e) => format!("No frame yet: {e}"),
-        None if status["found"] == json!(false) => {
-            format!("No frame yet: the {} window isn't open.", target.id())
-        }
+        None if status["found"] == json!(false) => format!(
+            "Can't see the {} window: it isn't open, or it isn't on the current screen (a fullscreen window in another desktop or Space counts as hidden). Switch to it and try again.",
+            target.id()
+        ),
         None => "No frame has been captured yet. Try again in a moment.".into(),
     }
 }

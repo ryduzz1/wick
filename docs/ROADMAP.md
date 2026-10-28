@@ -116,6 +116,10 @@ Built as one large pass:
 
 **Verification:** `npm run dist:dir` builds an unsigned `Wick.app` in about 7 s; `npm run smoke:dist` runs the full app smoke test against it (bundled engine, examples, asar paths, install and calibration) and the bundled `wick` command. The smoke test now starts from an empty sidebar with no examples, and also checks the mini window shows the running macro with "F8 to stop", and that the Get started card appears on a fresh profile. Screenshots of the mini window and Get started card checked by eye. The first Release workflow run (by hand, unsigned) passed on macOS and Windows: tests, the installers (dmg/zip, NSIS/zip), and the packaged smoke test, which is the first time the whole app, install screen and mini window ran on Windows.
 
+### Fixes from first use on a real game
+
+- On macOS, Wick can only see windows on the current screen, so a fullscreen Roblox in another Space disappears when you switch away. Agent tools used to hand back the last frame with a zero-size viewport (so every region collapsed); `observe`, `detect` and `read` now refuse and say to switch to the game, or keep it windowed.
+
 ## Still to test by hand
 
 Kept for the end-to-end test once the app is finished:
