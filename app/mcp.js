@@ -89,6 +89,25 @@ const TOOLS = [
     description: 'Turn part of a recording into a route the macro replays with ctx.input.play(route, { until }): storyboard steps ("3" or "3-5") or a time range in seconds. The route keeps the holds, presses, clicks and mouse turns with their timing (times from the route\'s first input). With name, saves it as routes/NAME.js in the macro folder and returns how to import it. Routes get the macro from one known place to another; end them with an until check on what should be on screen there.',
     properties: { folder, recording: { type: 'string' }, steps: { type: 'string' }, from: { type: 'number' }, to: { type: 'number' }, name: { type: 'string' } },
   },
+  {
+    name: 'wick_pack',
+    method: 'pack',
+    description: 'Pack the macro into a .wick file to share. Local data and generated editor files are left out; the package carries a SHA-256 of its contents.',
+    properties: { folder, out: { type: 'string', description: 'Where to write it (default: next to the macro folder).' } },
+  },
+  {
+    name: 'wick_install',
+    method: 'install',
+    description: 'Install a macro from a .wick file or link, a wick://install link, a GitHub repo (or repo folder) or a Gist. Without yes: true it only reports what it would install (name, permissions, files, whether it updates an installed copy and asks for new permissions). Only install with yes after the person has agreed: installed macros are other people\'s code.',
+    properties: { source: { type: 'string' }, yes: { type: 'boolean' }, macro: { type: 'string', description: 'Which folder, when the source has several macros.' } },
+    required: ['source'],
+  },
+  {
+    name: 'wick_calibration',
+    method: 'calibration',
+    description: 'This user\'s corrections to the macro (kept in app data, never exported): region corrections by name, and color swaps. With color "#from=#to", swap a color the macro tracks for the one this user\'s game shows (find it with wick_detect); "#from=" clears it. reset: true clears everything. Also lists the colors written in the macro\'s code.',
+    properties: { folder, color: { type: 'string' }, reset: { type: 'boolean' } },
+  },
   { name: 'wick_regions', method: 'regions', description: 'The macro\'s regions. x and y place each region\'s center relative to its anchor; x, y, w and h are in viewport heights.', properties: { folder } },
   {
     name: 'wick_set_region',
@@ -111,7 +130,7 @@ const TOOLS = [
   { name: 'wick_new_macro', method: 'newMacro', description: 'Create a new macro folder from the starter template, in the Wick library unless dir is given.', properties: { name: { type: 'string' }, target, dir: { type: 'string' } }, required: ['name'] },
 ];
 
-const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'record', 'storyboard', 'route', 'saveTemplate', 'templates', 'read', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate', 'runs']);
+const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'record', 'storyboard', 'route', 'saveTemplate', 'templates', 'read', 'pack', 'calibration', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate', 'runs']);
 
 /** Tool results as MCP content: the JSON, plus any PNG the command saved. */
 function content(result) {

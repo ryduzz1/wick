@@ -14,6 +14,8 @@
   const timers = [];
   const lastClick = new Map();
   const settings = {};
+  // This user's color corrections (calibration), by the macro's color.
+  const colorMap = {};
   let nextId = 1;
   let now = 0;
   let latency = 0.04;
@@ -183,7 +185,7 @@
         t: "track",
         id,
         region,
-        color: options.color,
+        color: colorMap[options.color.toLowerCase()] ?? options.color,
         tolerance: options.tolerance ?? 30,
         minPixels: options.minPixels ?? 3,
       });
@@ -554,6 +556,7 @@
   globalThis.__wick_init = (json) => {
     const init = JSON.parse(json);
     Object.assign(settings, init.settings ?? {});
+    Object.assign(colorMap, init.colors ?? {});
     Object.freeze(settings);
     latency = init.latency ?? latency;
     status = "running";

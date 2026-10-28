@@ -14,6 +14,7 @@ import { parseArgs, parseAt, parseTrack, toRequest } from '../app/cli.js';
 import { createCommands, normalizeCommand } from '../app/commands.js';
 import { connect, serve } from '../app/control.js';
 import { EngineClient } from '../app/engine-client.js';
+import { Calibrations } from '../app/calibration.js';
 import { copyMacro } from '../app/library.js';
 import { loadMacro } from '../app/macro-loader.js';
 
@@ -40,6 +41,8 @@ before(async () => {
       await engine.call('session.start', { target, scenario });
       current = key;
     },
+    libraryDir: join(dir, 'library'),
+    calibrations: new Calibrations(join(dir, 'calibration')),
   });
 });
 
@@ -229,6 +232,44 @@ test('templates are saved, matched and loaded with the macro', async () => {
   const spec = await loadMacro(trip);
   assert.equal(spec.templates.me.viewportHeight, 540);
   assert.ok(spec.templates.me.png.length > 100);
+});
+
+test('packs, shows, installs and updates a macro', async () => {
+  const trip = copyMacro(join(root, 'examples', 'fishing-trip'), dir, { author: 'tester' });
+  const packed = commands.pack({ folder: trip, out: join(dir, 'trip.wick') });
+  assert.ok(fs.existsSync(packed.file));
+  const look = await commands.install({ source: packed.file });
+  assert.equal(look.installed, false);
+  assert.equal(look.intact, true);
+  assert.ok(look.permissions.some((p) => p.name === 'character.reset'));
+  assert.equal(fs.existsSync(join(dir, 'library')), false, 'nothing installed without yes');
+  const done = await commands.install({ source: packed.file, yes: true });
+  assert.equal(done.installed, true);
+  assert.ok(done.folder.startsWith(join(dir, 'library')));
+  const run = await commands.run({ folder: done.folder, target: 'sim', seconds: 8 });
+  assert.equal(run.end.reason, 'stopped', 'the installed copy runs');
+  const manifest = JSON.parse(fs.readFileSync(join(trip, 'wick.json'), 'utf8'));
+  fs.writeFileSync(join(trip, 'wick.json'), JSON.stringify({ ...manifest, version: '0.2.0', permissions: [...manifest.permissions, 'game.rejoin'] }));
+  commands.pack({ folder: trip, out: join(dir, 'trip-2.wick') });
+  const update = await commands.install({ source: join(dir, 'trip-2.wick') });
+  assert.equal(update.existing.folder, done.folder);
+  assert.deepEqual(update.addedPermissions, ['game.rejoin']);
+  const updated = await commands.install({ source: join(dir, 'trip-2.wick'), yes: true });
+  assert.deepEqual([updated.updated, updated.previousVersion], [true, '0.1.0']);
+});
+
+test('color calibration changes what a run looks for, and resets', async () => {
+  const bar = copyMacro(example, dir, { author: 'tester' });
+  const shown = await commands.calibration({ folder: bar });
+  assert.ok(shown.colorsInCode.includes('#3ccf5a'), JSON.stringify(shown.colorsInCode));
+  await commands.calibration({ folder: bar, color: '#3ccf5a=#c03080' });
+  const off = await commands.run({ folder: bar, target: 'sim', seconds: 4, exact: true });
+  assert.ok(off.score.inZone < 0.5, `looking for the wrong color: ${off.score.inZone}`);
+  const reset = await commands.calibration({ folder: bar, reset: true });
+  assert.deepEqual(reset.colors, {});
+  const on = await commands.run({ folder: bar, target: 'sim', seconds: 4, exact: true });
+  assert.ok(on.score.inZone > 0.8, `${on.score.inZone}`);
+  await assert.rejects(commands.calibration({ folder: bar, color: 'green=blue' }), /#rrggbb=#rrggbb/);
 });
 
 test('the fishing loop example recovers on the simulator it describes', async () => {

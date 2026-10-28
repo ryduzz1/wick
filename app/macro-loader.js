@@ -135,7 +135,7 @@ export function humanProfile(input = DEFAULT_INPUT, seed = Math.floor(Math.rando
 }
 
 /** Loads a macro folder into the shape the engine's macro.run expects. */
-export async function loadMacro(folder, { settings: overrides, input } = {}) {
+export async function loadMacro(folder, { settings: overrides, input, calibration } = {}) {
   const manifest = await readJson(join(folder, 'wick.json'), 'wick.json');
   if (manifest === undefined) fail(`There's no wick.json in ${folder}.`);
   const problems = checkManifest(manifest);
@@ -149,6 +149,7 @@ export async function loadMacro(folder, { settings: overrides, input } = {}) {
     files[key] = key.endsWith('.ts') ? stripTypes(source, key) : source;
   }
   if (!(entry in files)) fail(`The entry file "${entry}" is missing.`);
+  const cal = typeof calibration === 'function' ? calibration(manifest.id) : calibration;
   return {
     id: manifest.id,
     name: manifest.name,
@@ -156,7 +157,9 @@ export async function loadMacro(folder, { settings: overrides, input } = {}) {
     entry,
     files,
     permissions: manifest.permissions ?? [],
-    regions,
+    // This user's corrections, if the macro has been calibrated.
+    regions: { ...regions, ...(cal?.regions ?? {}) },
+    colors: { ...(cal?.colors ?? {}) },
     settings: resolveSettings(manifest, overrides),
     human: humanProfile(input),
     game: manifest.game ?? {},

@@ -17,6 +17,14 @@ export const ANCHORS = [
 
 export const defaultLibrary = () => path.join(os.homedir(), 'Documents', 'Wick');
 
+/** Wick's app data folder, as the app uses it (for the CLI when the app isn't open). */
+export function userDataDir() {
+  if (process.env.WICK_USER_DATA) return process.env.WICK_USER_DATA;
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'wick');
+  if (process.platform === 'win32') return path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'wick');
+  return path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'), 'wick');
+}
+
 /** Lowercase letters, digits and dashes, as macro ids require. */
 export function slug(text, fallback = 'macro') {
   const s = String(text ?? '')
@@ -59,7 +67,7 @@ function freeFolder(dir, base) {
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 
 /** Types for editors, next to the macro so it works wherever the folder goes. */
-function addEditorFiles(folder) {
+export function addEditorFiles(folder) {
   if (fs.existsSync(SDK)) fs.copyFileSync(SDK, path.join(folder, 'wick.d.ts'));
   writeJson(path.join(folder, 'tsconfig.json'), {
     compilerOptions: {

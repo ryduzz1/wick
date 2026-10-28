@@ -8,7 +8,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createCommands } from './commands.js';
 import { connect } from './control.js';
+import { Calibrations } from './calibration.js';
 import { EngineClient } from './engine-client.js';
+import { userDataDir } from './library.js';
 
 const HELP = `wick: agent tools for Wick macros
 
@@ -48,6 +50,12 @@ Usage: wick <command> [options]
                                  Saved live runs of this macro (app only)
   stop                           Stop whatever is running
   new NAME [--target T] [--dir D] Create a macro (in the library by default)
+  pack [--out F]                 Pack this macro into a .wick file to share
+  install SOURCE [--yes] [--macro FOLDER]
+                                 Install from a .wick file or link, a GitHub repo or a
+                                 Gist. Shows what it would install until --yes
+  calibration [--color FROM=TO] [--reset]
+                                 Your corrections to this macro's colors and regions
   init                           Add AGENTS.md and CLAUDE.md to this macro
   mcp                            Run as an MCP server over stdio
 
@@ -59,7 +67,7 @@ Options for every command:
 
 Output is JSON. Input only reaches the target while it has focus; F8 stops everything.`;
 
-const BOOLEAN = new Set(['local', 'live', 'help', 'mask', 'exact', 'you', 'run', 'fast']);
+const BOOLEAN = new Set(['local', 'live', 'help', 'mask', 'exact', 'you', 'run', 'fast', 'yes', 'reset']);
 const REPEATED = new Set(['track', 'input']);
 
 export function parseArgs(argv) {
@@ -130,11 +138,14 @@ export async function openBackend({ local = false } = {}) {
   let current = null;
   const commands = createCommands({
     engine,
-    async ensureSession(target) {
-      if (current === target) return;
-      await engine.call('session.start', { target });
-      current = target;
+    async ensureSession(target, scenario) {
+      const key = `${target} ${JSON.stringify(scenario ?? null)}`;
+      if (current === key) return;
+      await engine.call('session.start', { target, scenario });
+      current = key;
     },
+    libraryDir: process.env.WICK_LIBRARY || undefined,
+    calibrations: new Calibrations(path.join(userDataDir(), 'calibration')),
   });
   return {
     kind: 'local',
@@ -253,6 +264,15 @@ export function toRequest(positional, flags, cwd = process.cwd()) {
     case 'new':
       if (!args[0]) throw new Error('Give the macro a name: wick new "Fishing loop".');
       return ['newMacro', { name: args.join(' '), target: flags.target ?? 'roblox', dir: flags.dir && path.resolve(cwd, flags.dir) }];
+    case 'pack':
+      needFolder();
+      return ['pack', { ...base, out: flags.out && path.resolve(cwd, flags.out) }];
+    case 'install':
+      if (!args[0]) throw new Error('Say what to install: wick install trip.wick, or a link.');
+      return ['install', { source: /^[a-z]+:\/\//i.test(args[0]) ? args[0] : path.resolve(cwd, args[0]), yes: Boolean(flags.yes), macro: flags.macro }];
+    case 'calibration':
+      needFolder();
+      return ['calibration', { ...base, color: flags.color, reset: Boolean(flags.reset) }];
     case 'init':
       needFolder();
       return ['init', base];

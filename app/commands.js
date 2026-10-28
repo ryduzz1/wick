@@ -9,7 +9,9 @@ import os from 'node:os';
 import path from 'node:path';
 import * as library from './library.js';
 import { writeAgentGuide } from './library.js';
+import { colorsIn } from './calibration.js';
 import { DEFAULT_INPUT, loadMacro, loadTemplates, MacroError, TARGETS } from './macro-loader.js';
+import { exportMacro, fetchSource, inspect, install, macrosIn, openPackage } from './package.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -76,6 +78,7 @@ function readManifest(folder) {
  * @param {(id: string) => object} [host.savedSettings]  the user's settings for a macro id
  * @param {() => object} [host.inputPreferences]  the app's human input preference
  * @param {string} [host.libraryDir]
+ * @param {import('./calibration.js').Calibrations} [host.calibrations]  each user's corrections by macro id
  * @param {(event: string, data: object) => void} [host.notify]  tells the app what an agent did
  */
 export function createCommands(host) {
@@ -85,6 +88,26 @@ export function createCommands(host) {
   let activeRun = null;
   // Runs use the app's input preference; `exact` turns the human profile off.
   const inputFor = (exact) => (exact ? { human: false } : (host.inputPreferences?.() ?? DEFAULT_INPUT));
+  const calibrationFor = (id) => host.calibrations?.get(id);
+  const libraryDir = () => host.libraryDir ?? library.defaultLibrary();
+
+  /** The files of a macro to install, from a .wick file or a link. */
+  async function sourceFiles(source, which) {
+    const file = path.resolve(String(source ?? ''));
+    if (source && !/^[a-z]+:\/\//i.test(source) && fs.existsSync(file)) {
+      const { files, declaredHash } = openPackage(fs.readFileSync(file));
+      const macros = macrosIn(files).map((m) => ({ ...m, declaredHash: m.folder === '' ? declaredHash : null }));
+      return { origin: { kind: 'file', url: file }, macros: pickMacro(macros, which) };
+    }
+    const { source: origin, macros } = await fetchSource(source);
+    return { origin, macros: pickMacro(macros, which) };
+  }
+  const pickMacro = (macros, which) => {
+    if (!which) return macros;
+    const picked = macros.filter((m) => m.folder === which);
+    if (!picked.length) throw new MacroError(`There's no macro in "${which}". It has: ${macros.map((m) => m.folder || '(root)').join(', ')}.`);
+    return picked;
+  };
 
   const macroInfo = (folder) => {
     if (!folder) return { regions: {} };
@@ -291,7 +314,7 @@ export function createCommands(host) {
       const { regions, manifest } = macroInfo(folder);
       const dir = path.join(outDir(folder, 'recordings'), `${t}-${stamp()}`);
       const spec = { dir, seconds: Number(seconds), fps: Number(fps), region: regionFor(region, regions), you: Boolean(you) };
-      const macro = run ? await loadMacro(folder, { settings: host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact) }) : undefined;
+      const macro = run ? await loadMacro(folder, { settings: host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact), calibration: calibrationFor }) : undefined;
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ target: t, region: region ?? null, seconds: spec.seconds, fps: spec.fps, you: spec.you, at: new Date().toISOString() }));
       const note = 'Read storyboard.md first: the recording split into steps (what was pressed, held, clicked and turned, the waits, and where the screen changed), with each step\'s start and end frame; storyboard.png shows each step\'s last frame in order. record.jsonl has one line per sample ({ t, change, frame? }) and per input ({ t, by: "wick"|"you", input, ... }; "mouse" lines are the person\'s mouse motion summed per sample, which is how camera turns show up). Times are ms from the start and positions are fractions of the recorded area. contact.png shows the frames listed in "sheet", left to right, top to bottom.';
@@ -375,6 +398,63 @@ export function createCommands(host) {
       return result;
     },
 
+    /** Packs the macro into a .wick file to share. */
+    pack({ folder, out } = {}) {
+      const { manifest } = macroInfo(folder);
+      const file = out ? path.resolve(out) : path.join(path.dirname(folder), `${path.basename(folder)}-${manifest.version ?? '0.1.0'}.wick`);
+      const result = exportMacro(folder, file);
+      notify('log', { text: `Agent packed ${manifest.name ?? manifest.id} into ${path.basename(file)}.` });
+      return { ...result, note: 'Local data (.wick/), AGENTS.md, CLAUDE.md and wick.d.ts are left out; the last three are made again on install.' };
+    },
+
+    /**
+     * Installs a macro from a .wick file, a wick:// link, a GitHub repo or
+     * a Gist. Without `yes` it only shows what would be installed.
+     */
+    async install({ source, yes = false, macro: which } = {}) {
+      if (!source) throw new MacroError('Say what to install: a .wick file, or a link to one, a GitHub repo or a Gist.');
+      const { origin, macros } = await sourceFiles(source, which);
+      if (macros.length > 1) {
+        return { source: origin, choose: macros.map((m) => m.folder), note: 'This has several macros. Run again with --macro FOLDER to pick one.' };
+      }
+      const [m] = macros;
+      const info = inspect(m.files, { libraryDir: libraryDir(), declaredHash: m.declaredHash });
+      const summary = {
+        source: origin,
+        name: info.manifest?.name,
+        id: info.manifest?.id,
+        version: info.manifest?.version,
+        author: info.manifest?.author,
+        target: info.manifest?.target,
+        permissions: info.permissions,
+        files: info.files.map((f) => `${f.name} (${f.bytes} bytes)`),
+        intact: info.intact,
+        existing: info.existing && { folder: info.existing.folder, version: info.existing.version },
+        addedPermissions: info.addedPermissions,
+        problems: info.problems,
+      };
+      if (!yes) return { ...summary, installed: false, note: 'Nothing is installed yet. Read the code and permissions (the Wick app shows them all), then run again with --yes.' };
+      if (info.intact === false) throw new MacroError('This package was changed after it was exported (its contents don\'t match its hash), so Wick won\'t install it.');
+      const result = install(m.files, libraryDir(), { source: origin.kind === 'file' ? null : { kind: origin.kind, url: origin.url, folder: m.folder } });
+      notify('log', { text: `Agent ${result.updated ? 'updated' : 'installed'} ${summary.name ?? summary.id}.` });
+      notify('library', {});
+      return { ...summary, installed: true, ...result };
+    },
+
+    /** This user's corrections to a macro: show, set a color, or reset. */
+    async calibration({ folder, color, reset = false } = {}) {
+      const { manifest } = macroInfo(folder);
+      if (!host.calibrations) throw new MacroError('Calibration needs the Wick app\'s data folder.');
+      if (reset) host.calibrations.reset(manifest.id);
+      if (color) {
+        const [from, to] = String(color).split('=');
+        if (!/^#[0-9a-f]{6}$/i.test(from ?? '') || (to && !/^#[0-9a-f]{6}$/i.test(to))) throw new MacroError('Give a color correction as #rrggbb=#rrggbb (or #rrggbb= to clear it).');
+        host.calibrations.setColor(manifest.id, from, to);
+      }
+      const spec = await loadMacro(folder, { calibration: calibrationFor });
+      return { id: manifest.id, ...host.calibrations.get(manifest.id), colorsInCode: colorsIn(spec.files), note: 'Region corrections replace the macro\'s regions by name; color corrections swap a color the macro tracks for this one. Both are this user\'s only and aren\'t exported.' };
+    },
+
     regions({ folder }) {
       return macroInfo(folder).regions;
     },
@@ -401,7 +481,7 @@ export function createCommands(host) {
       if (!folder) throw new MacroError('Run needs a macro folder.');
       const t = pickTarget(target, folder);
       const manifest = readManifest(folder);
-      const spec = await loadMacro(folder, { settings: settings ?? host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact) });
+      const spec = await loadMacro(folder, { settings: settings ?? host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact), calibration: calibrationFor });
       if (t === 'sim' && !live) {
         const result = await engine.call('sim.run', { macro: spec, scenario: scenario ?? spec.simulator, seconds: Number(seconds ?? 30) });
         lastRun = { target: t, folder, at: new Date().toISOString(), ...result };
@@ -431,7 +511,7 @@ export function createCommands(host) {
     async simulate({ folder, seeds = 5, seconds = 30, settings, exact = false } = {}) {
       if (!folder) throw new MacroError('Simulate needs a macro folder.');
       const manifest = readManifest(folder);
-      const spec = await loadMacro(folder, { settings: settings ?? host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact) });
+      const spec = await loadMacro(folder, { settings: settings ?? host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact), calibration: calibrationFor });
       const n = Math.max(1, Math.min(50, Number(seeds)));
       // Each game gets its own input seed, so results repeat run to run.
       const runs = await Promise.all(
@@ -472,7 +552,7 @@ export function createCommands(host) {
     },
 
     newMacro({ name, target = 'roblox', dir }) {
-      const folder = library.createMacro(dir ?? host.libraryDir ?? library.defaultLibrary(), { name, target });
+      const folder = library.createMacro(dir ?? libraryDir(), { name, target });
       notify('library', { folder });
       return { folder };
     },

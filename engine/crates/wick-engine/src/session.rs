@@ -562,6 +562,7 @@ mod tests {
             human: None,
             game: Default::default(),
             templates: HashMap::new(),
+            colors: HashMap::new(),
         }
     }
 
@@ -966,6 +967,18 @@ mod tests {
             json!(10),
             "sold the one fish: {r}"
         );
+    }
+
+    #[test]
+    fn color_calibration_swaps_the_tracked_color() {
+        // Written for a zone of a different green; calibrated to the sim's.
+        let other = CONTROLLER.replace("#3ccf5a", "#c03080");
+        let wrong = run_headless(spec(&other, &["mouse.click"]), Scenario::default(), 5.0).unwrap();
+        assert!(wrong["score"]["inZone"].as_f64().unwrap() < 0.5, "{wrong}");
+        let mut calibrated = spec(&other, &["mouse.click"]);
+        calibrated.colors.insert("#c03080".into(), "#3ccf5a".into());
+        let right = run_headless(calibrated, Scenario::default(), 5.0).unwrap();
+        assert!(right["score"]["inZone"].as_f64().unwrap() > 0.8, "{right}");
     }
 
     #[test]

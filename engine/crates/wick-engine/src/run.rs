@@ -35,6 +35,10 @@ pub struct MacroSpec {
     /// How human the input looks. Missing means exact input.
     #[serde(default)]
     pub human: Option<HumanProfile>,
+    /// This user's color corrections: a color the macro tracks, by the one
+    /// to look for instead.
+    #[serde(default)]
+    pub colors: HashMap<String, String>,
     /// Images for `screen.find`, by name.
     #[serde(default)]
     pub templates: HashMap<String, crate::template::TemplateSpec>,
@@ -143,7 +147,7 @@ impl MacroRun {
         let runtime = MacroRuntime::start(
             spec.files.clone(),
             &spec.entry,
-            &json!({ "settings": settings, "latency": target.latency() }),
+            &json!({ "settings": settings, "latency": target.latency(), "colors": spec.colors }),
         )?;
         let input = InputState::with_profile(spec.human.clone());
         let mut templates = HashMap::new();
