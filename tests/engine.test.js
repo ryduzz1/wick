@@ -58,7 +58,8 @@ test('answers basic requests', async () => {
 test('the example macro keeps the tick in the zone on 20 simulated games', async () => {
   const spec = await loadMacro(example);
   const runs = await Promise.all(
-    Array.from({ length: 20 }, (_, i) => engine.call('sim.run', { macro: spec, scenario: { seed: i + 1 }, seconds: 30 })),
+    // Fixed human-profile seeds too, so the result doesn't vary run to run.
+    Array.from({ length: 20 }, (_, i) => engine.call('sim.run', { macro: { ...spec, human: spec.human && { ...spec.human, seed: i + 1 } }, scenario: { seed: i + 1 }, seconds: 30 })),
   );
   for (const r of runs) assert.notEqual(r.end.reason, 'error', r.end.error);
   const scores = runs.map((r) => r.score.inZone);

@@ -12,6 +12,7 @@ pub mod run;
 pub mod runtime;
 pub mod session;
 pub mod sim;
+pub mod storyboard;
 pub mod target;
 pub mod tracker;
 pub mod vision;

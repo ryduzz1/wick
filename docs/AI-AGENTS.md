@@ -25,7 +25,8 @@ To use the CLI from anywhere while running from source, link it once: `npm link`
 | `wick detect [--region R] [--color HEX] [--mask]` | `wick_detect` | The region's main colors, and where a color matches (pixel count, extent, centroid). `--mask` saves an image with matches painted ember. |
 | `wick act click [--at R]`, `act press KEY`, … | `wick_act` | One input, to test something. |
 | `wick probe --track NAME:REGION:HEX --clicks N --every MS` | `wick_probe` | Follows colors for a few seconds while sending timed input, and returns each tracker's position over time. |
-| `wick record [--seconds S] [--region R] [--you] [--run]` | `wick_record` | Records a few seconds: keyframes, a change score per sample, every input, and a contact sheet of the moments that changed most (the MCP tool returns it as an image). `--you` also logs your own clicks and keys in the game window, so an agent can watch you do something once. `--run` runs the macro meanwhile. |
+| `wick record [--seconds S] [--region R] [--you] [--run]` | `wick_record` | Records up to 10 minutes: keyframes, a change score per sample, every input, a contact sheet of the moments that changed most (the MCP tool returns it as an image), and a storyboard. `--you` also logs your own clicks, keys and mouse motion in the game window, so an agent can watch you do something once. `--run` runs the macro meanwhile. |
+| `wick storyboard [DIR]` | `wick_storyboard` | A recording split into steps: what was held, pressed, clicked and turned in each, the waits between, where the screen changed all at once, and each step's start and end frame. Defaults to the newest recording. |
 | `wick regions`, `wick region set NAME …`, `wick region remove NAME` | `wick_regions`, `wick_set_region`, `wick_remove_region` | Read and edit `regions.json`. The app's live view updates as they change. |
 | `wick run [--seconds S] [--live] [--exact]` | `wick_run` | Runs the macro and waits for it to end. Returns how it ended, its stats and its log. On `sim` it runs instantly unless `--live`. Input goes through the app's human profile unless `--exact`. |
 | `wick simulate [--seeds N]` | `wick_simulate` | Runs the macro on several simulated bar-minigame games. |
@@ -42,12 +43,22 @@ Agent input goes through the same gate as a macro's: only to the target window, 
 
 1. **Look.** `observe`, then draw regions around the moving parts with `region set`.
 2. **Detect.** `detect` each region to find exact colors from its palette, then check matches with `--mask`.
-3. **Measure.** `probe` to get the mechanics as numbers. For a sequence you don't understand yet, `record --you` while the person plays it once, then read `record.jsonl` and the contact sheet. For the bar minigame: the tick's drift with no input, how far one click pushes it, how often the zone jumps, and the latency.
+3. **Measure.** `probe` to get the mechanics as numbers. For a sequence you don't understand yet, `record --you` while the person plays it once (see [Teaching a loop](#teaching-a-loop)), then read `storyboard.md` and the frames it names. For the bar minigame: the tick's drift with no input, how far one click pushes it, how often the zone jumps, and the latency.
 4. **Write** the controller in `main.ts` from those measurements, not guesses. Multi-step tasks become a state machine (`ctx.states()`): one state per step, each with a timeout, a recovery state that gets back to a known place, and a start-point check before each loop. See [API.md](API.md#state-machines) and `examples/fishing-loop`.
 5. **Test.** `run` with a short limit, read the result and log, and fix what fails. Repeat until it's reliable.
 6. **Wrap up.** Fill in the manifest's `settings`, `permissions` and `README.md`.
 
 Agents work much better from numbers ("tick x every frame") than from raw video, so the tools return traces wherever they can.
+
+## Teaching a loop
+
+For a task with several parts (fish until the bag is full, walk to the vendor, sell, walk back), the agent learns it from one demonstration:
+
+1. **Pick a start point you can always get back to,** like right after a respawn (`character.reset()` gets the macro there too). The macro's recovery state goes back to it whenever something goes wrong.
+2. **Record one full loop:** `wick record --you --seconds 180` (or ask the agent to), then play it once at a normal pace from the start point. Pause for a second between parts; pauses are where steps split.
+3. **The agent reads the storyboard,** `storyboard.md`: each step with what you pressed, held, clicked and how far you turned the camera, the waits, and where the screen changed all at once (a menu opening, a minigame appearing). Each step names its start and end frame, which the agent opens to see what the screen looked like.
+4. **The agent turns steps into states:** walking parts become routes, menus become regions and `screen.similar` checks, minigames get probed and get their own controller, and "until the bag is full" becomes a counter or a check on the inventory.
+5. **Test on `sim`, then live,** with the storyboard frames as the reference for what each state should see.
 
 ## Example probe
 

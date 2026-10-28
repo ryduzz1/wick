@@ -5,7 +5,10 @@
 //! video: `record.jsonl` has a change score per sample and each input, and a
 //! contact sheet shows the moments that changed most. Optionally the
 //! person's own clicks and key presses are logged too, so an agent can see
-//! what they did in the game ("watch me do it once").
+//! what they did in the game ("watch me do it once"), including mouse motion,
+//! which is how camera turns show up. Recordings can run for minutes, so a
+//! whole loop of a game can be shown once; `storyboard.md` then splits it
+//! into steps (see `storyboard.rs`).
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -31,9 +34,10 @@ pub struct RecordSpec {
     /// Only record this part of the window.
     #[serde(default)]
     pub region: Option<RegionSpec>,
-    #[serde(default = "default_width")]
-    pub max_width: usize,
-    /// Also log the person's own clicks and key presses.
+    /// Width of saved keyframes; smaller by default for long recordings.
+    #[serde(default)]
+    pub max_width: Option<usize>,
+    /// Also log the person's own clicks, key presses and mouse motion.
     #[serde(default)]
     pub you: bool,
 }
@@ -44,17 +48,15 @@ fn default_seconds() -> f64 {
 fn default_fps() -> f64 {
     10.0
 }
-fn default_width() -> usize {
-    640
-}
-
-pub const MAX_SECONDS: f64 = 60.0;
-const MAX_FRAMES: usize = 400;
+pub const MAX_SECONDS: f64 = 600.0;
+/// Recordings longer than this get smaller keyframes, spaced further apart.
+const LONG_SECONDS: f64 = 60.0;
+const MAX_FRAMES: usize = 2400;
 /// A keyframe is saved when this much changed since the last one, or after
-/// `KEYFRAME_EVERY_MS` regardless.
+/// `keyframe_every` regardless.
 const SAVE_CHANGE: f64 = 0.01;
 const KEYFRAME_EVERY_MS: f64 = 1000.0;
-const THUMB_W: usize = 192;
+pub(crate) const THUMB_W: usize = 192;
 const SHEET_COLUMNS: usize = 4;
 const SHEET_TILES: usize = 12;
 
@@ -62,7 +64,15 @@ struct Saved {
     t: f64,
     file: String,
     change: f64,
-    thumb: Frame,
+}
+
+/// The person's mouse motion since the last sample, summed.
+#[derive(Default)]
+struct Motion {
+    t: Option<f64>,
+    dx: f64,
+    dy: f64,
+    at: Option<(f64, f64)>,
 }
 
 pub struct Recorder {
@@ -77,7 +87,12 @@ pub struct Recorder {
     wick_inputs: usize,
     your_inputs: usize,
     cursor: Option<(f64, f64)>,
+    motion: Motion,
     viewport: Rect,
+    max_width: usize,
+    keyframe_every: f64,
+    /// Lines of the log kept for the storyboard (samples and inputs).
+    lines: Vec<Value>,
 }
 
 impl Recorder {
@@ -88,7 +103,14 @@ impl Recorder {
             ));
         }
         spec.fps = spec.fps.clamp(1.0, 30.0);
-        spec.max_width = spec.max_width.clamp(160, 1920);
+        let long = spec.seconds > LONG_SECONDS;
+        let max_width = spec
+            .max_width
+            .unwrap_or(if long { 480 } else { 640 })
+            .clamp(160, 1920);
+        // Keep the frame count in bounds: about one forced keyframe per
+        // MAX_FRAMES / 2 of the recording, never more often than once a second.
+        let keyframe_every = KEYFRAME_EVERY_MS.max(spec.seconds * 1000.0 / (MAX_FRAMES / 2) as f64);
         if let Some(r) = &spec.region {
             r.validate("region")?;
         }
@@ -112,13 +134,19 @@ impl Recorder {
             wick_inputs: 0,
             your_inputs: 0,
             cursor: None,
+            motion: Motion::default(),
             viewport: target.viewport(),
+            max_width,
+            keyframe_every,
+            lines: Vec::new(),
             spec,
         })
     }
 
     fn write(&mut self, line: Value) -> Result<(), String> {
-        writeln!(self.log, "{line}").map_err(|e| e.to_string())
+        writeln!(self.log, "{line}").map_err(|e| e.to_string())?;
+        self.lines.push(line);
+        Ok(())
     }
 
     /// Where a frame-pixel point is, as fractions of the recorded area.
@@ -147,6 +175,17 @@ impl Recorder {
                 self.cursor = Some((*x, *y));
                 return Ok(());
             }
+            Action::Turn { dx, dy } if by == "you" => {
+                // Heard motion is summed until the next sample.
+                let m = &mut self.motion;
+                m.t.get_or_insert(t);
+                m.dx += dx;
+                m.dy += dy;
+                if at.is_some() {
+                    m.at = at;
+                }
+                return Ok(());
+            }
             Action::Turn { dx, dy } => {
                 json!({ "t": t, "by": by, "input": "turn", "dx": dx, "dy": dy })
             }
@@ -171,6 +210,21 @@ impl Recorder {
         self.write(line)
     }
 
+    /// Writes the person's summed mouse motion, if they moved it.
+    fn flush_motion(&mut self) -> Result<(), String> {
+        let m = std::mem::take(&mut self.motion);
+        let Some(t) = m.t else { return Ok(()) };
+        if m.dx.abs() + m.dy.abs() < 1.0 {
+            return Ok(());
+        }
+        let mut line = json!({ "t": t, "by": "you", "input": "mouse", "dx": m.dx.round(), "dy": m.dy.round() });
+        if let Some(p) = m.at {
+            line["at"] = self.place(p);
+        }
+        self.your_inputs += 1;
+        self.write(line)
+    }
+
     /// Takes the latest frame and the inputs since the last call. Returns the
     /// result once the time is up.
     pub fn tick(
@@ -192,6 +246,7 @@ impl Recorder {
             if now >= self.next_sample {
                 self.next_sample = now.max(self.next_sample) + 1000.0 / self.spec.fps;
                 self.viewport = target.viewport();
+                self.flush_motion()?;
                 self.sample(now, frame)?;
             }
         }
@@ -214,18 +269,17 @@ impl Recorder {
             .as_ref()
             .map(|(at, s)| (now - at, change(s, &sig)));
         let save = self.saved.len() < MAX_FRAMES
-            && since_saved.is_none_or(|(ms, c)| c >= SAVE_CHANGE || ms >= KEYFRAME_EVERY_MS);
+            && since_saved.is_none_or(|(ms, c)| c >= SAVE_CHANGE || ms >= self.keyframe_every);
         let mut line = json!({ "t": t, "change": (score * 10000.0).round() / 10000.0 });
         if save {
             let file = format!("frames/{:06}.png", t.round() as u64);
-            area.scaled(self.spec.max_width)
+            area.scaled(self.max_width)
                 .write_png(&self.spec.dir.join(&file))?;
             line["frame"] = json!(file);
             self.saved.push(Saved {
                 t,
                 file,
                 change: score,
-                thumb: area.scaled(THUMB_W),
             });
             self.last_saved = Some((now, sig.clone()));
         }
@@ -271,38 +325,23 @@ impl Recorder {
     }
 
     fn contact_sheet(&self, tiles: &[usize]) -> Result<Option<PathBuf>, String> {
-        let Some(first) = tiles.first().map(|&i| &self.saved[i].thumb) else {
-            return Ok(None);
-        };
-        const GAP: usize = 4;
-        let (tw, th) = (first.width, first.height);
-        let cols = SHEET_COLUMNS.min(tiles.len());
-        let rows = tiles.len().div_ceil(cols);
-        let mut sheet = Frame::new(
-            cols * tw + (cols + 1) * GAP,
-            rows * th + (rows + 1) * GAP,
-            [0x1c, 0x1c, 0x1c],
-        );
-        for (k, &i) in tiles.iter().enumerate() {
-            let thumb = &self.saved[i].thumb;
-            let (ox, oy) = (GAP + (k % cols) * (tw + GAP), GAP + (k / cols) * (th + GAP));
-            for y in 0..thumb.height.min(th) {
-                let src = &thumb.data[y * thumb.stride..y * thumb.stride + thumb.width.min(tw) * 4];
-                let at = (oy + y) * sheet.stride + ox * 4;
-                sheet.data[at..at + src.len()].copy_from_slice(src);
-            }
-        }
+        let files: Vec<PathBuf> = tiles
+            .iter()
+            .map(|&i| self.spec.dir.join(&self.saved[i].file))
+            .collect();
         let path = self.spec.dir.join("contact.png");
-        sheet.write_png(&path)?;
-        Ok(Some(path))
+        Ok(sheet(&files, &path)?.then_some(path))
     }
 
     pub fn finish(&mut self, target: &mut dyn Target) -> Result<Value, String> {
         if self.spec.you {
             let _ = target.listen(false);
         }
+        self.flush_motion()?;
         self.log.flush().map_err(|e| e.to_string())?;
         let tiles = self.highlights();
+        let storyboard = crate::storyboard::build(&self.lines, self.spec.seconds * 1000.0);
+        let storyboard = crate::storyboard::write(&self.spec.dir, &storyboard)?;
         let sheet = self.contact_sheet(&tiles)?;
         let mut moments: Vec<&(f64, f64)> = self.samples.iter().filter(|(_, c)| *c > 0.0).collect();
         moments.sort_by(|a, b| b.1.total_cmp(&a.1));
@@ -319,6 +358,7 @@ impl Recorder {
             "path": sheet,
             "sheet": tiles.iter().map(|&i| json!({ "t": self.saved[i].t, "frame": self.saved[i].file })).collect::<Vec<_>>(),
             "inputs": { "wick": self.wick_inputs, "you": self.your_inputs },
+            "storyboard": storyboard,
         }))
     }
 
@@ -327,6 +367,38 @@ impl Recorder {
         self.spec.seconds = ((target.now_ms() - self.started) / 1000.0).max(0.0);
         self.finish(target)
     }
+}
+
+/// Lays PNG files out as a grid of thumbnails, in order. Returns false when
+/// there was nothing to lay out.
+pub(crate) fn sheet(files: &[PathBuf], path: &std::path::Path) -> Result<bool, String> {
+    const GAP: usize = 4;
+    let thumbs: Vec<Frame> = files
+        .iter()
+        .filter_map(|f| Frame::read_png(f).ok())
+        .map(|f| f.scaled(THUMB_W))
+        .collect();
+    let Some(first) = thumbs.first() else {
+        return Ok(false);
+    };
+    let (tw, th) = (first.width, first.height);
+    let cols = SHEET_COLUMNS.min(thumbs.len());
+    let rows = thumbs.len().div_ceil(cols);
+    let mut out = Frame::new(
+        cols * tw + (cols + 1) * GAP,
+        rows * th + (rows + 1) * GAP,
+        [0x1c, 0x1c, 0x1c],
+    );
+    for (k, thumb) in thumbs.iter().enumerate() {
+        let (ox, oy) = (GAP + (k % cols) * (tw + GAP), GAP + (k / cols) * (th + GAP));
+        for y in 0..thumb.height.min(th) {
+            let src = &thumb.data[y * thumb.stride..y * thumb.stride + thumb.width.min(tw) * 4];
+            let at = (oy + y) * out.stride + ox * 4;
+            out.data[at..at + src.len()].copy_from_slice(src);
+        }
+    }
+    out.write_png(path)?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -419,7 +491,7 @@ mod tests {
     fn rejects_long_recordings() {
         let mut target = SimTarget::new(Scenario::default(), false);
         let spec: RecordSpec =
-            serde_json::from_value(json!({ "dir": dir("long"), "seconds": 61 })).unwrap();
+            serde_json::from_value(json!({ "dir": dir("long"), "seconds": 601 })).unwrap();
         assert!(Recorder::start(spec, &mut target).is_err());
     }
 }

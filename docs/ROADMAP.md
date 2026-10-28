@@ -73,6 +73,16 @@ Built as one large pass:
 
 **Verification:** sim tests run a state-machine macro for 40 seconds with a stuck cast and a disconnect: it plays at least 8 rounds, resets once, rejoins once and recovers at least twice; with a loop limit it stops after exactly 3 loops; without the reset permission it stops with a clear error. Simulator tests cover rounds, stuck casts and disconnects; Roblox tests check the reset key order and that rejoin needs a place ID. A Node test runs the fishing example through the command layer with human input and checks the same recoveries.
 
+### Pass 6: Demonstrations (in progress)
+
+- **Longer recordings:** up to 10 minutes. Keyframes are smaller and spaced out for long recordings, and the contact sheet is built from the saved PNGs instead of thumbnails kept in memory.
+- **Your mouse:** `record --you` now logs mouse motion (summed per sample as `"mouse"` lines, with raw deltas so camera turns show up even while the game locks the cursor) and modifier keys on their own (shift, control, alt, command) on macOS. Windows logs motion from the low-level mouse hook.
+- **Storyboards:** every recording gets `storyboard.md`, `storyboard.json` and `storyboard.png`: the recording split into steps at pauses, waits and scene changes, each with a label ("hold w 2.0 s, then mouse right 200, then press e"), its actions with times, and its start and end frames. `wick storyboard` and `wick_storyboard` rebuild and return it.
+
+Still to do in this pass: a simulated world to test demonstrations end to end, routes (replaying a stretch of a recording through the human profile), template matching, and OCR.
+
+**Verification so far:** storyboard tests split a synthetic demonstration (walk with a camera turn, press E, wait for a scene change, ten clicks, walk) into exactly the expected five steps and labels, and an idle recording into one wait; a PNG round-trip test; a Node test records the sim with the macro running and reads its storyboard back through the command layer. The Windows motion hook type-checks with `cargo clippy --target x86_64-pc-windows-msvc`. The example-macro Node test now pins its human-profile seeds, which made it flaky before.
+
 ## Still to test by hand
 
 Kept for the end-to-end test once the app is finished:
@@ -82,6 +92,7 @@ Kept for the end-to-end test once the app is finished:
 - Agent tools on a real window: `observe`, `detect`, `probe` and `act` on the test bench; Claude Code building a macro from a new folder.
 - Human input: watch the mouse paths and click timing on the test bench at a few precision values; the example should still keep up at 0.85.
 - `wick record --you` on the test bench: your clicks and keys show up in `record.jsonl` with the right positions, Wick's own clicks are marked `wick`, and nothing is logged while another window has focus.
+- `wick record --you --seconds 120` in a Roblox game: mouse turns while right-dragging or in shift lock show up as `"mouse"` lines, shift on its own is heard, and `storyboard.md` splits a walk–interact–wait loop into sensible steps.
 - The trace graph and the Runs card during and after a live run on the test bench.
 - `character.reset()` in a Roblox game that allows macros: the menu opens, R and Enter land, and the macro carries on once you respawn.
 - `game.rejoin()` after a real disconnect: whether the `roblox://` link rejoins in the open client on macOS and Windows.
@@ -89,9 +100,9 @@ Kept for the end-to-end test once the app is finished:
 
 ## Build plan
 
-Left over from earlier passes, to fold into the passes below: a `dist:dir` packaged build, `template` and `similar` detectors and a PNG fixture set, measured (rather than fixed) input latency on real windows, and a per-frame detector benchmark. Modifier keys pressed on their own (shift, control) aren't heard by `record --you` on macOS yet.
+Left over from earlier passes, to fold into the passes below: a `dist:dir` packaged build, `template` and `similar` detectors and a PNG fixture set, measured (rather than fixed) input latency on real windows, and a per-frame detector benchmark.
 
-### Pass 6: Sharing
+### Pass 7: Sharing
 
 - `wick pack` and Export: `.wick` files with a content hash.
 - Install from a file, a `wick://install` link, or a GitHub repo or Gist URL.
@@ -100,7 +111,7 @@ Left over from earlier passes, to fold into the passes below: a `dist:dir` packa
 
 **Checks:** tests for pack and install round trips, tampered-package rejection, and settings kept across updates. Manual: export a macro, install it on another account or machine, and calibrate it.
 
-### Pass 7: Polish and release (planned passes 11 and 12)
+### Pass 8: Polish and release (planned passes 11 and 12)
 
 - The mini window over Roblox.
 - OCR (Vision on macOS, Windows.Media.Ocr on Windows).
@@ -120,7 +131,7 @@ Left over from earlier passes, to fold into the passes below: a `dist:dir` packa
 - `window` target: control any window the user picks.
 - Public library index.
 - Block or graph editor on top of the same API.
-- Teach-by-demo: infer a macro's rules from a recording of you playing.
+- Fully automatic teach-by-demo: write the whole macro from a recording with no agent in the loop.
 
 ## Out of scope
 

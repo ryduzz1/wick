@@ -50,18 +50,24 @@ const TOOLS = [
   {
     name: 'wick_record',
     method: 'record',
-    description: 'Record the target window for some seconds: keyframes (PNG), a change score per sample and every input in record.jsonl, and a contact sheet of the moments that changed most (returned as an image). With you: true, the person\'s own clicks and key presses in the game window are logged too, so you can see what they did; ask them to play while it records. With run: true, the macro runs meanwhile.',
+    description: 'Record the target window for up to 10 minutes: keyframes (PNG), a change score per sample and every input in record.jsonl, a contact sheet of the moments that changed most (returned as an image), and storyboard.md, which splits the recording into steps (holds, presses, clicks, mouse turns, waits, screen changes) with each step\'s start and end frame. With you: true, the person\'s own clicks, keys and mouse motion in the game window are logged too: ask them to play one full loop of what the macro should do while it records, starting from a spot they can always get back to (like right after a respawn). With run: true, the macro runs meanwhile.',
     properties: {
       folder,
       target,
       region,
-      seconds: { type: 'number', description: 'How long, up to 60 (default 5).' },
+      seconds: { type: 'number', description: 'How long, up to 600 (default 5).' },
       fps: { type: 'number', description: 'Samples per second, 1 to 30 (default 10).' },
       you: { type: 'boolean' },
       run: { type: 'boolean' },
       exact: { type: 'boolean' },
       live: { type: 'boolean', description: 'On sim, record in real time instead of instantly.' },
     },
+  },
+  {
+    name: 'wick_storyboard',
+    method: 'storyboard',
+    description: 'A recording split into steps, rebuilt from its log: for each step its time range, a label like "hold w 2.1 s, then press e", the actions with times, whether the screen changed all at once at its end, and its start and end keyframes. Returns the storyboard sheet (each step\'s last frame, in order) as an image. Defaults to the newest recording.',
+    properties: { folder, recording: { type: 'string', description: 'The recording folder (the "dir" a record call returned).' } },
   },
   { name: 'wick_regions', method: 'regions', description: 'The macro\'s regions. x and y place each region\'s center relative to its anchor; x, y, w and h are in viewport heights.', properties: { folder } },
   {
@@ -85,12 +91,12 @@ const TOOLS = [
   { name: 'wick_new_macro', method: 'newMacro', description: 'Create a new macro folder from the starter template, in the Wick library unless dir is given.', properties: { name: { type: 'string' }, target, dir: { type: 'string' } }, required: ['name'] },
 ];
 
-const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'record', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate', 'runs']);
+const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'record', 'storyboard', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate', 'runs']);
 
 /** Tool results as MCP content: the JSON, plus any PNG the command saved. */
 function content(result) {
   const out = [{ type: 'text', text: JSON.stringify(result, null, 1) }];
-  for (const file of [result?.mask, result?.path]) {
+  for (const file of [result?.mask, result?.path, result?.storyboard?.sheet]) {
     if (typeof file === 'string' && file.endsWith('.png') && fs.existsSync(file)) {
       out.push({ type: 'image', mimeType: 'image/png', data: fs.readFileSync(file).toString('base64') });
     }

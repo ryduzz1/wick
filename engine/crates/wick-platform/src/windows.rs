@@ -50,8 +50,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostThreadMessageW, SetCursorPos,
     SetWindowsHookExW, UnhookWindowsHookEx, HC_ACTION, KBDLLHOOKSTRUCT, LLKHF_INJECTED,
     LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_HOTKEY, WM_KEYDOWN,
-    WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_QUIT, WM_RBUTTONDOWN,
-    WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_QUIT,
+    WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
 use crate::{Bounds, FrameSink, MouseButton, Permissions, WindowInfo};
@@ -445,6 +445,8 @@ pub fn start_hotkey(
 
 /// The thread running the low-level hooks, while listening.
 static LISTENER: Mutex<Option<u32>> = Mutex::new(None);
+/// The last cursor position the mouse hook saw, for motion deltas.
+static LAST_POINT: Mutex<Option<(i32, i32)>> = Mutex::new(None);
 
 unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 {
@@ -473,6 +475,19 @@ unsafe extern "system" fn mouse_hook(code: i32, wparam: WPARAM, lparam: LPARAM) 
             WM_RBUTTONUP => Some((MouseButton::Right, false)),
             WM_MBUTTONDOWN => Some((MouseButton::Middle, true)),
             WM_MBUTTONUP => Some((MouseButton::Middle, false)),
+            WM_MOUSEMOVE if m.flags & LLMHF_INJECTED == 0 => {
+                let (x, y) = (m.pt.x, m.pt.y);
+                let last = LAST_POINT.lock().unwrap().replace((x, y));
+                if let Some((lx, ly)) = last {
+                    crate::heard(crate::UserInput::Motion {
+                        dx: f64::from(x - lx),
+                        dy: f64::from(y - ly),
+                        x: f64::from(x),
+                        y: f64::from(y),
+                    });
+                }
+                None
+            }
             _ => None,
         };
         if let (Some((button, down)), true) = (button, m.flags & LLMHF_INJECTED == 0) {
@@ -525,6 +540,7 @@ pub fn start_listener() -> Result<(), String> {
 }
 
 pub fn stop_listener() {
+    *LAST_POINT.lock().unwrap() = None;
     if let Some(thread) = LISTENER.lock().unwrap().take() {
         let _ = unsafe { PostThreadMessageW(thread, WM_QUIT, WPARAM(0), LPARAM(0)) };
     }

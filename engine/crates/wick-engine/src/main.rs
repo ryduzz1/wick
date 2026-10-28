@@ -126,6 +126,10 @@ impl Engine {
                 self.with_session(|s| s.send(Msg::Detect(Box::new(spec), tx)))?;
                 rx.recv().map_err(|_| "The session stopped".to_string())?
             }
+            "record.storyboard" => {
+                let dir: std::path::PathBuf = param(params, "dir")?;
+                wick_engine::storyboard::rebuild(&dir)
+            }
             "session.stopRecord" => {
                 self.with_session(|s| s.send(Msg::StopRecord))?;
                 Ok(json!(true))

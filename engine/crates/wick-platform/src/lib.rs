@@ -180,6 +180,14 @@ pub enum UserInput {
         name: String,
         down: bool,
     },
+    /// Mouse movement: `dx`, `dy` are raw deltas (camera turns while a game
+    /// locks the cursor); `x`, `y` is where the cursor ended up.
+    Motion {
+        dx: f64,
+        dy: f64,
+        x: f64,
+        y: f64,
+    },
 }
 
 struct Heard {
@@ -226,6 +234,24 @@ pub(crate) fn heard(input: UserInput) {
         }
         if !*down {
             h.held.remove(name);
+        }
+    }
+    // Motion arrives hundreds of times a second; runs of it are merged.
+    if let UserInput::Motion { dx, dy, x, y } = input {
+        if let Some((
+            _,
+            UserInput::Motion {
+                dx: sx,
+                dy: sy,
+                x: lx,
+                y: ly,
+            },
+        )) = h.events.last_mut()
+        {
+            *sx += dx;
+            *sy += dy;
+            (*lx, *ly) = (x, y);
+            return;
         }
     }
     if h.events.len() < MAX_HEARD {

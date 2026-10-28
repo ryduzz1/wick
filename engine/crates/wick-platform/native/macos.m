@@ -319,7 +319,10 @@ int wick_mac_hotkey_start(uint16_t code, wick_hotkey_cb callback, void *context)
 // Hears the person's clicks and key presses for recordings. It passes every
 // event through unchanged; it uses a default (not listen-only) tap so the
 // Accessibility permission Wick already has is enough.
-typedef void (*wick_input_cb)(void *context, int kind, int code, int down, double x, double y);
+// kind: 0 key (code = key code), 1 mouse button (code 0 left, 1 right, 2
+// middle), 2 mouse motion (dx and dy are the raw deltas, which still arrive
+// when a game locks the cursor for camera turns).
+typedef void (*wick_input_cb)(void *context, int kind, int code, int down, double x, double y, double dx, double dy);
 
 static CFMachPortRef listen_tap = NULL;
 static volatile int listen_on = 0;
@@ -337,20 +340,42 @@ static CGEventRef listen_event(CGEventTapProxy proxy, CGEventType type, CGEventR
     case kCGEventKeyDown:
     case kCGEventKeyUp:
         listen_callback(listen_context, 0, (int)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode),
-                        type == kCGEventKeyDown, 0, 0);
+                        type == kCGEventKeyDown, 0, 0, 0, 0);
         break;
+    case kCGEventFlagsChanged: {
+        // Modifier keys arrive as flag changes; left and right map to one name.
+        int code = (int)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+        CGEventFlags flags = CGEventGetFlags(event);
+        CGEventFlags mask = 0;
+        switch (code) {
+        case 56: case 60: code = 56; mask = kCGEventFlagMaskShift; break;
+        case 59: case 62: code = 59; mask = kCGEventFlagMaskControl; break;
+        case 58: case 61: code = 58; mask = kCGEventFlagMaskAlternate; break;
+        case 55: case 54: code = 55; mask = kCGEventFlagMaskCommand; break;
+        }
+        if (mask) listen_callback(listen_context, 0, code, (flags & mask) != 0, 0, 0, 0, 0);
+        break;
+    }
     case kCGEventLeftMouseDown:
     case kCGEventLeftMouseUp:
-        listen_callback(listen_context, 1, 0, type == kCGEventLeftMouseDown, p.x, p.y);
+        listen_callback(listen_context, 1, 0, type == kCGEventLeftMouseDown, p.x, p.y, 0, 0);
         break;
     case kCGEventRightMouseDown:
     case kCGEventRightMouseUp:
-        listen_callback(listen_context, 1, 1, type == kCGEventRightMouseDown, p.x, p.y);
+        listen_callback(listen_context, 1, 1, type == kCGEventRightMouseDown, p.x, p.y, 0, 0);
         break;
     case kCGEventOtherMouseDown:
     case kCGEventOtherMouseUp:
         if (CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber) == 2)
-            listen_callback(listen_context, 1, 2, type == kCGEventOtherMouseDown, p.x, p.y);
+            listen_callback(listen_context, 1, 2, type == kCGEventOtherMouseDown, p.x, p.y, 0, 0);
+        break;
+    case kCGEventMouseMoved:
+    case kCGEventLeftMouseDragged:
+    case kCGEventRightMouseDragged:
+    case kCGEventOtherMouseDragged:
+        listen_callback(listen_context, 2, 0, 0, p.x, p.y,
+                        (double)CGEventGetIntegerValueField(event, kCGMouseEventDeltaX),
+                        (double)CGEventGetIntegerValueField(event, kCGMouseEventDeltaY));
         break;
     default:
         break;
@@ -369,6 +394,9 @@ int wick_mac_listen(int on, wick_input_cb callback, void *context) {
     listen_context = context;
     if (!listen_tap) {
         CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp) |
+                           CGEventMaskBit(kCGEventFlagsChanged) | CGEventMaskBit(kCGEventMouseMoved) |
+                           CGEventMaskBit(kCGEventLeftMouseDragged) | CGEventMaskBit(kCGEventRightMouseDragged) |
+                           CGEventMaskBit(kCGEventOtherMouseDragged) |
                            CGEventMaskBit(kCGEventLeftMouseDown) | CGEventMaskBit(kCGEventLeftMouseUp) |
                            CGEventMaskBit(kCGEventRightMouseDown) | CGEventMaskBit(kCGEventRightMouseUp) |
                            CGEventMaskBit(kCGEventOtherMouseDown) | CGEventMaskBit(kCGEventOtherMouseUp);

@@ -11,7 +11,7 @@ pub const PLATFORM: &str = "macos";
 
 type FrameCallback = extern "C" fn(*mut c_void, *const u8, usize, usize, usize);
 type HotkeyCallback = extern "C" fn(*mut c_void);
-type InputCallback = extern "C" fn(*mut c_void, c_int, c_int, c_int, f64, f64);
+type InputCallback = extern "C" fn(*mut c_void, c_int, c_int, c_int, f64, f64, f64, f64);
 
 extern "C" {
     fn wick_mac_free(p: *mut c_char);
@@ -238,6 +238,7 @@ pub fn start_hotkey(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 extern "C" fn on_input(
     _context: *mut c_void,
     kind: c_int,
@@ -245,9 +246,13 @@ extern "C" fn on_input(
     down: c_int,
     x: f64,
     y: f64,
+    dx: f64,
+    dy: f64,
 ) {
     let down = down != 0;
-    let input = if kind == 0 {
+    let input = if kind == 2 {
+        crate::UserInput::Motion { dx, dy, x, y }
+    } else if kind == 0 {
         match crate::keys::mac_name(code as u32) {
             Some(name) => crate::UserInput::Key { name, down },
             None => return,

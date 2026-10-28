@@ -107,6 +107,12 @@ test('record saves keyframes, a log and a contact sheet', async () => {
   assert.ok(lines.some((l) => l.by === 'wick' && l.input === 'mouseDown'));
   assert.ok(lines.filter((l) => l.frame).every((l) => fs.existsSync(join(r.dir, l.frame))));
   assert.ok(r.run.score.inZone > 0.5, 'the macro played while recording');
+  assert.ok(fs.existsSync(r.storyboard.path), 'storyboard.md');
+  assert.ok(r.storyboard.steps >= 1);
+  const board = await commands.storyboard({ folder });
+  assert.equal(board.dir, r.dir, 'the newest recording');
+  assert.equal(board.board.by, 'wick', 'only the macro played');
+  assert.ok(board.board.steps.some((s) => s.actions.some((a) => a.do === 'click')));
 });
 
 test('regions can be set and removed', () => {

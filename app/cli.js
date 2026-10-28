@@ -25,8 +25,10 @@ Usage: wick <command> [options]
         [--input '{"time":0,"command":{"t":"press","key":"e"}}'] [--seconds S] [--hz N]
                                  Follow colors while sending timed input
   record [--seconds S] [--fps N] [--region R] [--you] [--run]
-                                 Save keyframes, change scores and inputs. --you also
-                                 logs your clicks and keys; --run runs the macro meanwhile
+                                 Save keyframes, change scores, inputs and a storyboard
+                                 (up to 600 s). --you also logs your clicks, keys and
+                                 mouse; --run runs the macro meanwhile
+  storyboard [DIR]               Rebuild and show a recording's steps (default: newest)
   regions                        List the macro's regions
   region set NAME [--anchor A] [--x N] [--y N] [--w N] [--h N]
   region remove NAME
@@ -196,6 +198,8 @@ export function toRequest(positional, flags, cwd = process.cwd()) {
         exact: Boolean(flags.exact),
         live: Boolean(flags.live),
       }];
+    case 'storyboard':
+      return ['storyboard', { ...base, recording: args[0] && path.resolve(cwd, args[0]) }];
     case 'regions':
       needFolder();
       return ['regions', base];

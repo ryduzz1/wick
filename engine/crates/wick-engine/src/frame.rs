@@ -206,6 +206,38 @@ impl Frame {
         }
     }
 
+    /// Reads a PNG file written by `write_png` (or any 8-bit RGB/RGBA PNG).
+    pub fn read_png(path: &std::path::Path) -> Result<Frame, String> {
+        let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+        let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
+        decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+        let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
+        let mut buf = vec![0; reader.output_buffer_size().ok_or("PNG too large")?];
+        let info = reader.next_frame(&mut buf).map_err(|e| e.to_string())?;
+        let (w, h) = (info.width as usize, info.height as usize);
+        let channels = match info.color_type {
+            png::ColorType::Rgb => 3,
+            png::ColorType::Rgba => 4,
+            png::ColorType::Grayscale => 1,
+            png::ColorType::GrayscaleAlpha => 2,
+            png::ColorType::Indexed => return Err("Indexed PNGs aren't supported".into()),
+        };
+        let mut frame = Frame::new(w, h, [0, 0, 0]);
+        for y in 0..h {
+            for x in 0..w {
+                let src = &buf[y * info.line_size + x * channels..];
+                let rgb = if channels >= 3 {
+                    [src[0], src[1], src[2]]
+                } else {
+                    [src[0]; 3]
+                };
+                let at = y * frame.stride + x * 4;
+                frame.data[at..at + 4].copy_from_slice(&[rgb[2], rgb[1], rgb[0], 255]);
+            }
+        }
+        Ok(frame)
+    }
+
     /// Encodes the frame as a PNG file.
     pub fn write_png(&self, path: &std::path::Path) -> Result<(), String> {
         let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
@@ -230,6 +262,19 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn png_round_trip() {
+        let mut f = Frame::new(7, 5, [1, 2, 3]);
+        f.fill(Rect::new(2.0, 1.0, 3.0, 2.0), [200, 100, 50]);
+        let path = std::env::temp_dir().join(format!("wick-png-{}.png", std::process::id()));
+        f.write_png(&path).unwrap();
+        let back = Frame::read_png(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!((back.width, back.height), (7, 5));
+        assert_eq!(back.rgb(0, 0), [1, 2, 3]);
+        assert_eq!(back.rgb(3, 2), [200, 100, 50]);
+    }
 
     #[test]
     fn fill_and_read_back() {

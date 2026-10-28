@@ -125,6 +125,17 @@ export function createCommands(host) {
     }
   }
 
+  // The newest recording of a macro, if any.
+  const latestRecording = (folder) => {
+    const root = outDir(folder, 'recordings');
+    try {
+      const dirs = fs.readdirSync(root).filter((d) => fs.existsSync(path.join(root, d, 'record.jsonl')));
+      dirs.sort((a, b) => fs.statSync(path.join(root, a)).mtimeMs - fs.statSync(path.join(root, b)).mtimeMs);
+      return dirs.length ? path.join(root, dirs.at(-1)) : null;
+    } catch {
+      return null;
+    }
+  };
   // Images go in the macro's .wick folder (never shared), or a temp folder
   // when the macro's folder can't be written, like a bundled example.
   const outDir = (folder, kind) => {
@@ -231,10 +242,10 @@ export function createCommands(host) {
       const dir = path.join(outDir(folder, 'recordings'), `${t}-${stamp()}`);
       const spec = { dir, seconds: Number(seconds), fps: Number(fps), region: regionFor(region, regions), you: Boolean(you) };
       const macro = run ? await loadMacro(folder, { settings: host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact) }) : undefined;
-      const note = 'record.jsonl has one line per sample ({ t, change, frame? }) and per input ({ t, by: "wick"|"you", input, ... }); times are ms from the start and click positions are fractions of the recorded area. contact.png shows the frames listed in "sheet", left to right, top to bottom.';
+      const note = 'Read storyboard.md first: the recording split into steps (what was pressed, held, clicked and turned, the waits, and where the screen changed), with each step\'s start and end frame; storyboard.png shows each step\'s last frame in order. record.jsonl has one line per sample ({ t, change, frame? }) and per input ({ t, by: "wick"|"you", input, ... }; "mouse" lines are the person\'s mouse motion summed per sample, which is how camera turns show up). Times are ms from the start and positions are fractions of the recorded area. contact.png shows the frames listed in "sheet", left to right, top to bottom.';
       if (t === 'sim' && !live) return { target: t, ...(await engine.call('sim.record', { ...spec, macro, scenario: scenario ?? manifest?.simulator })), note };
       await onTarget(t, manifest?.simulator);
-      notify('log', { text: `Agent started a ${spec.seconds}s recording of ${t}${you ? ', including your clicks and keys' : ''}.` });
+      notify('log', { text: `Agent started a ${spec.seconds}s recording of ${t}${you ? ', including your clicks, keys and mouse' : ''}.` });
       if (macro) {
         if (host.busyTarget?.()) throw new MacroError('A macro is already running. Stop it first, or record without --run.');
         await engine.call('macro.run', { macro });
@@ -248,6 +259,15 @@ export function createCommands(host) {
           await engine.call('macro.stop').catch(() => {});
         }
       }
+    },
+
+    /** A recording's storyboard, rebuilt from its log. Defaults to the newest recording. */
+    async storyboard({ folder, recording } = {}) {
+      const dir = recording ? path.resolve(recording) : latestRecording(folder);
+      if (!dir) throw new MacroError('There are no recordings yet. Make one with "wick record --you".');
+      const summary = await engine.call('record.storyboard', { dir });
+      const board = JSON.parse(fs.readFileSync(path.join(dir, 'storyboard.json'), 'utf8'));
+      return { dir, ...summary, path: summary.sheet ?? undefined, board };
     },
 
     regions({ folder }) {

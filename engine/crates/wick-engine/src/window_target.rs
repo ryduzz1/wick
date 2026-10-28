@@ -255,6 +255,17 @@ impl Target for WindowTarget {
                             at: Some((fx, fy)),
                         })
                     }
+                    // Deltas stay in screen points, the unit turns are sent in.
+                    wick_platform::UserInput::Motion { dx, dy, x, y } => {
+                        let fx = (x - w.bounds.x) * fw / w.bounds.w;
+                        let fy = (y - w.bounds.y) * fh / w.bounds.h;
+                        let inside = (0.0..fw).contains(&fx) && (0.0..fh).contains(&fy);
+                        Some(HeardInput {
+                            t,
+                            action: Action::Turn { dx, dy },
+                            at: inside.then_some((fx, fy)),
+                        })
+                    }
                 }
             })
             .collect()
