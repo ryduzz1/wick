@@ -18,7 +18,7 @@ Usage: wick <command> [options]
 
   status                         Wick, the engine, permissions and targets
   observe [--region R] [--out F] Save a PNG of the target window or one region
-  detect [--region R] [--color HEX] [--tolerance N] [--min-pixels N] [--mask [F]]
+  detect [--region R] [--color HEX | --except HEX,HEX] [--tolerance N] [--min-pixels N] [--mask [F]]
          [--template NAME]       Main colors in a region, where a color matches, and
                                  how well a saved template matches
   read [--region R] [--fast]     Read the text in a region (or the whole window)
@@ -190,6 +190,7 @@ export function toRequest(positional, flags, cwd = process.cwd()) {
         ...base,
         region: flags.region,
         color: flags.color,
+        except: typeof flags.except === 'string' ? flags.except.split(',') : undefined,
         tolerance: number(flags.tolerance),
         minPixels: number(flags.minPixels),
         mask: typeof flags.mask === 'string' ? path.resolve(cwd, flags.mask) : flags.mask,

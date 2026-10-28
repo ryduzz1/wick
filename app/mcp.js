@@ -28,7 +28,7 @@ const TOOLS = [
     name: 'wick_detect',
     method: 'detect',
     description: 'The main colors in a region (or the whole game area), and, with a color, where it matches: pixel count, extent and centroid as fractions of the region. With mask: true, returns an image with matches painted orange. With template, also how well that saved template matches and where (screen.find counts 0.8 and up as seen).',
-    properties: { folder, target, region, color: { type: 'string', description: '#rrggbb' }, tolerance: { type: 'number', description: 'Largest per-channel difference that still matches (default 30).' }, minPixels: { type: 'number' }, mask: { type: 'boolean' }, template: { type: 'string' } },
+    properties: { folder, target, region, color: { type: 'string', description: '#rrggbb' }, except: { type: 'array', items: { type: 'string' }, description: 'Match anything but these colors instead of color.' }, tolerance: { type: 'number', description: 'Largest per-channel difference that still matches (default 30).' }, minPixels: { type: 'number' }, mask: { type: 'boolean' }, template: { type: 'string' } },
   },
   {
     name: 'wick_save_template',
@@ -52,7 +52,7 @@ const TOOLS = [
     properties: {
       folder,
       target,
-      track: { type: 'array', description: 'What to follow.', items: { type: 'object', properties: { name: { type: 'string' }, region: { type: 'string' }, color: { type: 'string' }, tolerance: { type: 'number' }, minPixels: { type: 'number' } }, required: ['name', 'region', 'color'] } },
+      track: { type: 'array', description: 'What to follow.', items: { type: 'object', properties: { name: { type: 'string' }, region: { type: 'string' }, color: { type: 'string' }, except: { type: 'array', items: { type: 'string' }, description: 'Follow anything but these colors instead of color.' }, tolerance: { type: 'number' }, minPixels: { type: 'number' } }, required: ['name', 'region'] } },
       inputs: { type: 'array', description: 'Inputs to send, by time in ms since the probe started.', items: { type: 'object', properties: { time: { type: 'number' }, command }, required: ['time', 'command'] } },
       clicks: { type: 'object', description: 'Shorthand for evenly spaced clicks.', properties: { count: { type: 'number' }, every: { type: 'number' }, start: { type: 'number' }, at, button: { type: 'string' } } },
       seconds: { type: 'number', description: 'How long to run, up to 60 (default 3).' },

@@ -194,11 +194,8 @@ impl Frame {
     /// Paints pixels that match `q` ember and dims the rest, to show what a
     /// color detector sees.
     pub fn highlight(&mut self, q: &crate::vision::ColorQuery) {
-        let tol = i16::from(q.tolerance);
         for px in self.data.as_chunks_mut::<4>().0 {
-            let rgb = [px[2], px[1], px[0]];
-            let hit = (0..3).all(|c| (i16::from(rgb[c]) - i16::from(q.rgb[c])).abs() <= tol);
-            *px = if hit {
+            *px = if q.matches([px[2], px[1], px[0]]) {
                 [0x4b, 0x8a, 0xf0, 255]
             } else {
                 [px[0] / 3, px[1] / 3, px[2] / 3, 255]

@@ -307,11 +307,25 @@ impl MacroRun {
             "track" => {
                 let region = cmd["region"].as_str().unwrap_or_default().to_string();
                 self.region_rect(&region)?;
-                let rgb = parse_color(cmd["color"].as_str().unwrap_or_default())?;
+                let except = match cmd["except"].as_array() {
+                    Some(list) => list
+                        .iter()
+                        .map(|c| parse_color(c.as_str().unwrap_or_default()))
+                        .collect::<Result<Vec<_>, _>>()?,
+                    None => Vec::new(),
+                };
+                let rgb = if except.is_empty() {
+                    parse_color(cmd["color"].as_str().unwrap_or_default())?
+                } else {
+                    [0, 0, 0]
+                };
                 let query = ColorQuery {
-                    rgb,
-                    tolerance: cmd["tolerance"].as_f64().unwrap_or(30.0).clamp(0.0, 255.0) as u8,
-                    min_pixels: cmd["minPixels"].as_u64().unwrap_or(3) as usize,
+                    except,
+                    ..ColorQuery::new(
+                        rgb,
+                        cmd["tolerance"].as_f64().unwrap_or(30.0).clamp(0.0, 255.0) as u8,
+                        cmd["minPixels"].as_u64().unwrap_or(3) as usize,
+                    )
                 };
                 self.trackers
                     .push(Tracker::new(cmd["id"].as_u64().unwrap_or(0), region, query));
@@ -468,10 +482,7 @@ impl MacroRun {
     pub fn trace_labels(&self) -> Value {
         self.trackers
             .iter()
-            .map(|t| {
-                let [r, g, b] = t.query.rgb;
-                json!({ "id": t.id, "region": t.region, "color": format!("#{r:02x}{g:02x}{b:02x}") })
-            })
+            .map(|t| json!({ "id": t.id, "region": t.region, "color": t.query.label() }))
             .collect()
     }
 

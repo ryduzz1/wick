@@ -223,7 +223,7 @@ export function createCommands(host) {
       return { target: t, region: region ?? null, ...result };
     },
 
-    async detect({ folder, target, region, color, tolerance, minPixels, mask, template, scenario } = {}) {
+    async detect({ folder, target, region, color, except, tolerance, minPixels, mask, template, scenario } = {}) {
       const t = pickTarget(target, folder);
       const { regions } = macroInfo(folder);
       const spec = regionFor(region, regions);
@@ -234,7 +234,7 @@ export function createCommands(host) {
       }
       await onTarget(t, scenario ?? readManifest(folder)?.simulator);
       const maskPath = mask ? (typeof mask === 'string' ? mask : path.join(outDir(folder, 'detect'), `${t}-${region ?? 'window'}-${stamp()}.png`)) : undefined;
-      const result = await withFrame('session.detect', { region: spec, color, tolerance, minPixels, mask: maskPath, template: tpl });
+      const result = await withFrame('session.detect', { region: spec, color, except, tolerance, minPixels, mask: maskPath, template: tpl });
       return { target: t, region: region ?? null, ...result, note: 'Match positions are fractions of the region. Palette colors are averages of similar pixels; use one as a starting color. A template score is 0 to 1; screen.find counts 0.8 and up as seen by default.' };
     },
 

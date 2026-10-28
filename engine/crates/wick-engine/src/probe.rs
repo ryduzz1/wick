@@ -35,7 +35,11 @@ fn default_hz() -> f64 {
 pub struct ProbeTrack {
     pub name: String,
     pub region: String,
+    #[serde(default)]
     pub color: String,
+    /// Follow anything but these colors instead of `color`.
+    #[serde(default)]
+    pub except: Vec<String>,
     #[serde(default = "default_tolerance")]
     pub tolerance: f64,
     #[serde(default = "default_min_pixels")]
@@ -44,12 +48,36 @@ pub struct ProbeTrack {
 
 impl ProbeTrack {
     fn query(&self) -> Result<ColorQuery, String> {
-        Ok(ColorQuery {
-            rgb: parse_color(&self.color)?,
-            tolerance: self.tolerance.clamp(0.0, 255.0) as u8,
-            min_pixels: self.min_pixels.max(1),
-        })
+        color_query(
+            Some(&self.color),
+            &self.except,
+            self.tolerance,
+            self.min_pixels,
+        )
     }
+}
+
+/// A color query from the form commands take: one `color`, or `except` a
+/// list of colors.
+fn color_query(
+    color: Option<&str>,
+    except: &[String],
+    tolerance: f64,
+    min_pixels: usize,
+) -> Result<ColorQuery, String> {
+    let except = except
+        .iter()
+        .map(|c| parse_color(c))
+        .collect::<Result<Vec<_>, _>>()?;
+    let rgb = if except.is_empty() {
+        parse_color(color.unwrap_or_default())?
+    } else {
+        [0, 0, 0]
+    };
+    Ok(ColorQuery {
+        except,
+        ..ColorQuery::new(rgb, tolerance.clamp(0.0, 255.0) as u8, min_pixels.max(1))
+    })
 }
 
 /// An input to send `time` ms after the probe starts.
@@ -278,6 +306,9 @@ fn command_json(c: &Command) -> Value {
 pub struct DetectSpec {
     pub region: Option<RegionSpec>,
     pub color: Option<String>,
+    /// Look for anything but these colors instead of `color`.
+    #[serde(default)]
+    pub except: Vec<String>,
     #[serde(default = "default_tolerance")]
     pub tolerance: f64,
     #[serde(default = "default_min_pixels")]
@@ -330,13 +361,15 @@ pub fn detect(frame: &Frame, viewport: Rect, spec: &DetectSpec) -> Result<Value,
         "frame": { "width": frame.width, "height": frame.height },
         "palette": palette(frame, rect, 8),
     });
-    let query = match &spec.color {
-        Some(c) => Some(ColorQuery {
-            rgb: parse_color(c)?,
-            tolerance: spec.tolerance.clamp(0.0, 255.0) as u8,
-            min_pixels: spec.min_pixels.max(1),
-        }),
-        None => None,
+    let query = if spec.color.is_some() || !spec.except.is_empty() {
+        Some(color_query(
+            spec.color.as_deref(),
+            &spec.except,
+            spec.tolerance,
+            spec.min_pixels,
+        )?)
+    } else {
+        None
     };
     if let Some(q) = &query {
         out["match"] = match find_color(frame, rect, q) {
@@ -428,6 +461,7 @@ mod tests {
                 name: "tick".into(),
                 region: "bar".into(),
                 color: "#ffffff".into(),
+                except: Vec::new(),
                 tolerance: 40.0,
                 min_pixels: 2,
             }],
@@ -503,6 +537,7 @@ mod tests {
         let spec = DetectSpec {
             region: Some(bar_region()),
             color: Some("#3ccf5a".into()),
+            except: Vec::new(),
             tolerance: 30.0,
             min_pixels: 3,
             mask: None,

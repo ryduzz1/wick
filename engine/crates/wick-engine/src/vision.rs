@@ -12,12 +12,52 @@ pub fn parse_color(text: &str) -> Result<[u8; 3], String> {
     Ok([byte(0), byte(2), byte(4)])
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ColorQuery {
     pub rgb: [u8; 3],
     /// Largest allowed difference on any one channel.
     pub tolerance: u8,
     pub min_pixels: usize,
+    /// When not empty, matches every pixel that isn't within `tolerance` of
+    /// any of these instead, and `rgb` is ignored. For a shape whose color
+    /// changes but whose surroundings don't.
+    pub except: Vec<[u8; 3]>,
+}
+
+impl ColorQuery {
+    pub fn new(rgb: [u8; 3], tolerance: u8, min_pixels: usize) -> Self {
+        ColorQuery {
+            rgb,
+            tolerance,
+            min_pixels,
+            except: Vec::new(),
+        }
+    }
+
+    pub fn matches(&self, [r, g, b]: [u8; 3]) -> bool {
+        let tol = i16::from(self.tolerance);
+        let near = |c: &[u8; 3]| {
+            (i16::from(r) - i16::from(c[0])).abs() <= tol
+                && (i16::from(g) - i16::from(c[1])).abs() <= tol
+                && (i16::from(b) - i16::from(c[2])).abs() <= tol
+        };
+        if self.except.is_empty() {
+            near(&self.rgb)
+        } else {
+            !self.except.iter().any(near)
+        }
+    }
+
+    /// `#rrggbb`, or `not #rrggbb #rrggbb` for an `except` query.
+    pub fn label(&self) -> String {
+        let hex = |[r, g, b]: [u8; 3]| format!("#{r:02x}{g:02x}{b:02x}");
+        if self.except.is_empty() {
+            hex(self.rgb)
+        } else {
+            let list: Vec<String> = self.except.iter().map(|&c| hex(c)).collect();
+            format!("not {}", list.join(" "))
+        }
+    }
 }
 
 /// Where matching pixels were found, as fractions of the region (0 at the
@@ -45,20 +85,13 @@ pub fn find_color(frame: &Frame, region: Rect, q: &ColorQuery) -> Option<ColorMa
     if x1 <= x0 || y1 <= y0 {
         return None;
     }
-    let tol = i16::from(q.tolerance);
-    let [tr, tg, tb] = q.rgb.map(i16::from);
     let (mut count, mut sx, mut sy) = (0usize, 0f64, 0f64);
     let (mut min_x, mut max_x, mut min_y, mut max_y) = (usize::MAX, 0, usize::MAX, 0);
     for y in y0..y1 {
         let row = &frame.data[y * frame.stride..];
         for x in x0..x1 {
             let i = x * 4;
-            let (b, g, r) = (
-                i16::from(row[i]),
-                i16::from(row[i + 1]),
-                i16::from(row[i + 2]),
-            );
-            if (r - tr).abs() <= tol && (g - tg).abs() <= tol && (b - tb).abs() <= tol {
+            if q.matches([row[i + 2], row[i + 1], row[i]]) {
                 count += 1;
                 sx += x as f64;
                 sy += y as f64;
@@ -94,11 +127,7 @@ mod tests {
     const GREEN: [u8; 3] = [0x3c, 0xcf, 0x5a];
 
     fn query(rgb: [u8; 3]) -> ColorQuery {
-        ColorQuery {
-            rgb,
-            tolerance: 20,
-            min_pixels: 3,
-        }
+        ColorQuery::new(rgb, 20, 3)
     }
 
     #[test]
@@ -157,6 +186,29 @@ mod tests {
                 min_pixels: 101,
                 ..query(GREEN)
             }
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn except_finds_whatever_else_is_there() {
+        // A dark bar, a blue fill from the left, and a zone of some other color.
+        let (dark, blue) = ([14, 24, 18], [37, 101, 171]);
+        let mut f = Frame::new(100, 10, dark);
+        f.fill(Rect::new(0.0, 0.0, 40.0, 10.0), blue);
+        f.fill(Rect::new(30.0, 0.0, 20.0, 10.0), [146, 76, 184]);
+        let q = ColorQuery {
+            except: vec![dark, blue],
+            ..query([0, 0, 0])
+        };
+        let m = find_color(&f, Rect::new(0.0, 0.0, 100.0, 10.0), &q).unwrap();
+        assert!((m.left - 0.30).abs() < 1e-9);
+        assert!((m.right - 0.50).abs() < 1e-9);
+        assert_eq!(q.label(), "not #0e1812 #2565ab");
+        assert!(find_color(
+            &Frame::new(100, 10, dark),
+            Rect::new(0.0, 0.0, 100.0, 10.0),
+            &q
         )
         .is_none());
     }

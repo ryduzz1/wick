@@ -177,7 +177,12 @@
     },
     track(region, options = {}) {
       if (typeof region !== "string") fail("screen.track(region, options) needs a region name");
-      if (typeof options.color !== "string") fail(`screen.track("${region}") needs a color, like { color: "#3ccf5a" }`);
+      const except = options.except;
+      if (except !== undefined && (!Array.isArray(except) || !except.length || except.some((c) => typeof c !== "string"))) {
+        fail(`screen.track("${region}") needs except to be a list of colors, like { except: ["#101418", "#2565ab"] }`);
+      }
+      if (except === undefined && typeof options.color !== "string") fail(`screen.track("${region}") needs a color, like { color: "#3ccf5a" }`);
+      const swap = (c) => colorMap[c.toLowerCase()] ?? c;
       const id = nextId++;
       const tracker = new Tracker(id, region);
       trackers.set(id, tracker);
@@ -185,7 +190,8 @@
         t: "track",
         id,
         region,
-        color: colorMap[options.color.toLowerCase()] ?? options.color,
+        color: except ? undefined : swap(options.color),
+        except: except?.map(swap),
         tolerance: options.tolerance ?? 30,
         minPixels: options.minPixels ?? 3,
       });

@@ -594,6 +594,25 @@ mod tests {
     }
 
     #[test]
+    fn a_zone_found_by_what_it_isnt_works_the_same() {
+        // The zone tracked as "not the background, the track or the tick",
+        // the way a macro follows a zone whose color changes every round.
+        let controller = CONTROLLER.replace(
+            r##"{ color: "#3ccf5a", tolerance: 40 }"##,
+            r##"{ except: ["#181a1f", "#2e3138", "#ffffff"], tolerance: 12, minPixels: 20 }"##,
+        );
+        assert_ne!(controller, CONTROLLER);
+        let r = run_headless(
+            spec(&controller, &["mouse.click"]),
+            Scenario::default(),
+            20.0,
+        )
+        .unwrap();
+        let in_zone = r["score"]["inZone"].as_f64().unwrap();
+        assert!(in_zone > 0.85, "{}", r["score"]);
+    }
+
+    #[test]
     fn human_input_still_keeps_the_tick_in_the_zone() {
         let scores: Vec<f64> = (1..=5)
             .map(|seed| {

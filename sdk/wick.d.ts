@@ -32,8 +32,14 @@ export interface Tracker {
 }
 
 export interface TrackOptions {
-  /** `#rrggbb`. */
-  color: string;
+  /** `#rrggbb`. Leave it out when using `except`. */
+  color?: string;
+  /**
+   * Follow anything that isn't one of these colors instead, for a shape whose
+   * color changes (a zone that's a different color each time) on a background
+   * that doesn't.
+   */
+  except?: string[];
   /** Largest difference allowed on any one color channel. Default 30. */
   tolerance?: number;
   /** Fewest matching pixels that count as found. Default 3. */

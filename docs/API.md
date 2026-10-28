@@ -28,6 +28,7 @@ Times are in milliseconds since the run started, and `ctx.now()` returns the cur
 | | |
 | --- | --- |
 | `track(region, { color, tolerance?, minPixels? })` | Starts following a color inside a region from `regions.json`. `color` is `#rrggbb`; `tolerance` (default 30) is the largest difference allowed on any channel; `minPixels` (default 3) is the fewest matches that count as found. Returns a tracker. |
+| `track(region, { except: [colors], tolerance?, minPixels? })` | Follows anything that isn't within `tolerance` of one of `colors` instead. For a shape whose color changes from run to run on a background that doesn't: list the background and anything else that's always there, and what's left is the shape. |
 | `similar(region, { threshold? })` | Starts comparing a region to how it looks on the next frame. Returns a check with `score` (the share of the region that still looks the same, 0 to 1), `matches` (`score` ≥ `threshold`, default 0.9) and `retake()`. Use it to tell whether you're back where you started. |
 | `find(region, { template, threshold?, hz? })` | Starts looking for a saved image (`templates/NAME.png`) in a region, `hz` times a second (default 10, up to 30). Returns a finder (below). For things one color can't pick out: a button, an icon, an item. |
 | `read(region, { hz?, accurate? })` | Starts reading the text in a region with the system's text recognition, `hz` times a second (default 2, up to 5). Returns a text reader (below). For counters, item names and menu labels. |

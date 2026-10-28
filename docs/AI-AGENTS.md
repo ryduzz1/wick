@@ -22,7 +22,7 @@ To use the CLI from anywhere while running from source, link it once: `npm link`
 | --- | --- | --- |
 | `wick status` | `wick_status` | Engine version, macOS permissions, and which targets are open and focused. |
 | `wick observe [--region R]` | `wick_observe` | Saves a PNG of the target window or one region (in the macro's `.wick/` folder). The MCP tool returns the image itself. |
-| `wick detect [--region R] [--color HEX] [--mask]` | `wick_detect` | The region's main colors, and where a color matches (pixel count, extent, centroid). `--mask` saves an image with matches painted ember. |
+| `wick detect [--region R] [--color HEX] [--mask]` | `wick_detect` | The region's main colors, and where a color matches (pixel count, extent, centroid). `--except HEX,HEX` matches anything but those colors instead. `--mask` saves an image with matches painted ember. |
 | `wick act click [--at R]`, `act press KEY`, … | `wick_act` | One input, to test something. |
 | `wick probe --track NAME:REGION:HEX --clicks N --every MS` | `wick_probe` | Follows colors for a few seconds while sending timed input, and returns each tracker's position over time. |
 | `wick record [--seconds S] [--region R] [--you] [--run]` | `wick_record` | Records up to 10 minutes: keyframes, a change score per sample, every input, a contact sheet of the moments that changed most (the MCP tool returns it as an image), and a storyboard. `--you` also logs your own clicks, keys and mouse motion in the game window, so an agent can watch you do something once. `--run` runs the macro meanwhile. |

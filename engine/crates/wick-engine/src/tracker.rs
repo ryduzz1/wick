@@ -139,11 +139,7 @@ mod tests {
     #[test]
     fn estimates_velocity_from_motion() {
         let white = [255, 255, 255];
-        let query = ColorQuery {
-            rgb: white,
-            tolerance: 10,
-            min_pixels: 1,
-        };
+        let query = ColorQuery::new(white, 10, 1);
         let mut tracker = Tracker::new(1, "bar".into(), query);
         let region = Rect::new(0.0, 0.0, 100.0, 10.0);
         for i in 0..6 {
@@ -163,11 +159,7 @@ mod tests {
 
     #[test]
     fn reports_how_long_it_has_been_missing() {
-        let query = ColorQuery {
-            rgb: [255, 0, 0],
-            tolerance: 0,
-            min_pixels: 1,
-        };
+        let query = ColorQuery::new([255, 0, 0], 0, 1);
         let mut tracker = Tracker::new(1, "r".into(), query);
         let region = Rect::new(0.0, 0.0, 10.0, 10.0);
         let mut seen = Frame::new(10, 10, [0, 0, 0]);
