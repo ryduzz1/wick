@@ -7,3 +7,5 @@
 - Shared macros are untrusted code. Keep them inside the sandbox described in `docs/FORMAT.md#permissions-and-the-sandbox`; never give macro code filesystem, network, process or general OS access.
 - The user handles manual testing on their device. Do not drive Roblox or other device UI for verification unless explicitly requested. Run relevant automated checks and provide manual test fixtures or instructions when useful.
 - At the end of each implementation pass, update `docs/ROADMAP.md` with completed work, remaining priorities, and verification results. Distinguish partial progress from completed features.
+- Commit and push to the current branch's remote whenever a coherent set of changes is done and relevant automated checks pass; there's no need to ask first. This is the user's standing request. Preserve unrelated work, never force-push, and report a blocked push accurately.
+- Large passes are welcome. Commit at checkpoints inside a long pass so progress is never only local.
