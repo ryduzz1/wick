@@ -189,9 +189,11 @@ You write the macro; you don't play the game. Use the \`wick\` CLI (or the Wick 
 | \`wick regions\` / \`wick region set bar --anchor bottom-center --x 0 --y -0.18 --w 0.46 --h 0.06\` | List or edit regions. x/y place the center relative to the anchor; all four are in viewport heights. |
 | \`wick probe --track tick:bar:#ffffff --clicks 5 --every 300 --seconds 2\` | Follows colors while sending timed input; prints each tracker's position over time. Use it to measure speeds, how far an input moves things, and latency. |
 | \`wick act click [--at bar]\` / \`wick act press e\` | Sends one input to test something. |
+| \`wick record --seconds 20 [--you] [--run]\` | Saves keyframes, a change score per sample and every input to \`.wick/recordings/\`, plus a contact sheet. \`--you\` logs the user's own clicks and keys: ask them to do the task once while it records. |
 | \`wick run [--seconds 20]\` | Runs this macro and prints the result and its log. On the \`sim\` target it runs instantly. |
 | \`wick simulate [--seeds 5]\` | Runs this macro on several simulated games (bar minigame only). |
 | \`wick telemetry\` | The last run's result again. |
+| \`wick runs\` / \`wick runs show FILE\` | Saved live runs, and one in full with its log and the trace of its last seconds. |
 | \`wick stop\` | Stops whatever is running. |
 
 Every command takes \`--target roblox|testbench|sim\` (default: the manifest's target) and prints JSON. The same tools are available over MCP (\`wick mcp\`, set up in \`.mcp.json\`) as \`wick_observe\`, \`wick_probe\` and so on; \`wick_observe\` returns the image directly.
@@ -207,7 +209,7 @@ Every command takes \`--target roblox|testbench|sim\` (default: the manifest's t
 1. **Look:** \`observe\`, then draw regions around the moving parts (\`region set\`).
 2. **Detect:** \`detect\` each region to find the exact colors, and check matches with \`--mask\`.
 3. **Measure:** \`probe\` to get the mechanics as numbers instead of guessing.
-4. **Write** \`main.ts\` from those numbers.
+4. **Write** \`main.ts\` from those numbers. Anything with more than one step (cast, play, sell, repeat) should be a state machine with \`ctx.states()\`: one state per step, a \`timeout\` on each, a \`recover\` state that gets back to a known place, and a \`startPoint\` region checked before each loop. Inside a state, use the state's own \`ctx\`. See the types in \`wick.d.ts\`.
 5. **Test:** \`run\` with a short limit, read the result and log, and fix what fails.
 6. **Wrap up:** fill in \`settings\`, \`permissions\` and \`README.md\`.
 `;

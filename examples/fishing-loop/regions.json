@@ -1,0 +1,6 @@
+{
+  "bar": { "anchor": "bottom-center", "x": 0, "y": -0.18, "w": 0.46, "h": 0.06 },
+  "prompt": { "anchor": "top-center", "x": 0, "y": 0.11, "w": 0.1, "h": 0.08 },
+  "hud": { "anchor": "bottom-left", "x": 0.15, "y": -0.06, "w": 0.2, "h": 0.04 },
+  "dialog": { "anchor": "center", "x": 0, "y": 0, "w": 0.4, "h": 0.2 }
+}

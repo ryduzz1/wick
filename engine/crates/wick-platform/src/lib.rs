@@ -147,6 +147,25 @@ pub fn start_hotkey(
     imp::start_hotkey(code, on_press)
 }
 
+/// Opens a link with the system's handler for its scheme, as clicking it
+/// would. Callers check the scheme; this just hands it to the OS.
+pub fn open_url(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let status = std::process::Command::new("open").arg(url).status();
+    #[cfg(windows)]
+    let status = std::process::Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", url])
+        .status();
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let status: std::io::Result<std::process::ExitStatus> =
+        Err(std::io::Error::other("opening links isn't supported here"));
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("Couldn't open {url} ({s})")),
+        Err(e) => Err(format!("Couldn't open {url}: {e}")),
+    }
+}
+
 /// One click or key press the person made, seen while listening.
 #[derive(Clone, Debug, PartialEq)]
 pub enum UserInput {

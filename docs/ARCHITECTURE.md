@@ -47,8 +47,8 @@ Target
 
 | Target | Status | Window | Extras |
 | --- | --- | --- | --- |
-| `roblox` | v1 | The Roblox player window | *(planned)* `character.reset`, `game.rejoin`, place ID |
-| `sim` | v1, dev and tests | Synthetic frames rendered inside the engine; no real window or input | Scenario controls (speeds, sizes, seed) |
+| `roblox` | v1 | The Roblox player window | `character.reset` (Esc, R, Enter) and `game.rejoin` (the `roblox://` link for `game.placeId`), in `roblox.rs` |
+| `sim` | v1, dev and tests | Synthetic frames rendered inside the engine; no real window or input | Scenario controls (speeds, sizes, seed), a looping mode with injectable failures, and simulated reset and rejoin |
 | `testbench` | v1, dev | Wick's bar-minigame page, in a window the app opens | none |
 | `window` | later | Any window the user picks | none |
 

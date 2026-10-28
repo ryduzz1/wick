@@ -38,6 +38,13 @@ export function checkManifest(m) {
       if (!s || !SETTING_TYPES.includes(s.type)) problems.push(`Setting "${key}" needs a "type": ${SETTING_TYPES.join(', ')}.`);
     }
   }
+  if (m.game !== undefined) {
+    if (!m.game || typeof m.game !== 'object') problems.push('"game" must be an object like { "name": "...", "placeId": 123 }.');
+    else if (m.game.placeId !== undefined && !(Number.isSafeInteger(m.game.placeId) && m.game.placeId > 0)) problems.push('"game.placeId" must be a positive whole number.');
+  }
+  if (m.simulator !== undefined && (!m.simulator || typeof m.simulator !== 'object' || Array.isArray(m.simulator))) {
+    problems.push('"simulator" must be an object of simulator settings, like { "roundMs": 2000 }.');
+  }
   return problems;
 }
 
@@ -131,6 +138,8 @@ export async function loadMacro(folder, { settings: overrides, input } = {}) {
     regions,
     settings: resolveSettings(manifest, overrides),
     human: humanProfile(input),
+    game: manifest.game ?? {},
+    simulator: manifest.simulator ?? null,
     manifest,
   };
 }

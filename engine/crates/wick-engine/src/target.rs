@@ -6,7 +6,16 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::frame::{Frame, Rect};
+use crate::human::Step;
 use crate::input::Action;
+
+/// What the macro says about its game, from `wick.json`.
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct GameInfo {
+    pub name: Option<String>,
+    pub place_id: Option<u64>,
+}
 
 /// One click or key press the person made in the target window.
 #[derive(Clone, Debug, PartialEq)]
@@ -39,6 +48,15 @@ pub trait Target {
     /// The person's input since the last call, while the window had focus.
     fn heard(&mut self) -> Vec<HeardInput> {
         Vec::new()
+    }
+    /// A target-specific action, such as resetting the character. Macros
+    /// need a permission of the same name. Returns input to send, timed in
+    /// ms from now, or does the action itself and returns nothing.
+    fn special(&mut self, name: &str, _game: &GameInfo) -> Result<Vec<Step>, String> {
+        Err(format!(
+            "\"{name}\" isn't available on the {} target.",
+            self.id()
+        ))
     }
     /// A target-specific score, if it can judge how well the macro did.
     fn score(&self) -> Option<Value> {

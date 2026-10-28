@@ -43,9 +43,23 @@ export interface TrackOptions {
 /** A region name, or a point inside a region as fractions (default: its center). */
 export type Point = string | { region?: string; x?: number; y?: number };
 
+/** Compares a region to how it looked when the check was made (or last retaken). */
+export interface Similar {
+  readonly region: string;
+  /** Share of the region that looks the same, 0 to 1. NaN until the reference is taken on the next frame. */
+  readonly score: number;
+  readonly threshold: number;
+  /** Whether `score` is at least `threshold`. */
+  readonly matches: boolean;
+  /** Takes a new reference on the next frame. */
+  retake(): void;
+}
+
 export interface Screen {
   /** Starts tracking a color inside a region from regions.json. */
   track(region: string, options: TrackOptions): Tracker;
+  /** Starts comparing a region to how it looks on the next frame. */
+  similar(region: string, options?: { threshold?: number }): Similar;
   /** Viewport size in frame pixels. */
   readonly width: number;
   readonly height: number;
@@ -82,6 +96,38 @@ export interface Loop {
   repeat(times: number, body: (index: number) => Promise<void> | void): Promise<void>;
 }
 
+export interface State {
+  /** Does the state's work with its own `ctx`, and returns the next state's name, or "done". */
+  run(ctx: Context): Promise<string | void> | string | void;
+  /** Gives up after this many ms: the state's waits and loops stop and its input is ignored. */
+  timeout?: number;
+  /** Where to go when it times out. Default: the machine's `recover` state. */
+  onTimeout?: string;
+}
+
+export interface StatesOptions {
+  /** The state each loop starts from. Default: the first one. */
+  start?: string;
+  /** Stop after this many loops (passes back to `start`); 0 or missing runs until a state returns "done". */
+  loops?: number;
+  /** The state for timeouts and failed start-point checks. */
+  recover?: string;
+  /** A region that must look like it did at the first loop before each later loop starts. */
+  startPoint?: string | { region: string; threshold?: number; wait?: number };
+  watchdog?: {
+    /** Stop after this many timeouts or failed checks in a row. Default 3. */
+    maxTimeouts?: number;
+    /** Stop when fewer than this share of the last 10 loops went cleanly. Default 0 (off). */
+    minSuccess?: number;
+  };
+}
+
+export interface StatesResult {
+  loops: number;
+  timeouts: number;
+  recoveries: number;
+}
+
 export interface Context {
   readonly screen: Screen;
   readonly input: Input;
@@ -95,6 +141,16 @@ export interface Context {
   readonly settings: Readonly<Record<string, unknown>>;
   /** Milliseconds since the run started. */
   now(): number;
+  /** Runs a state machine. See docs/API.md#state-machines. */
+  states(states: Record<string, State>, options?: StatesOptions): Promise<StatesResult>;
+  readonly character: {
+    /** Resets your character (Roblox: Esc, R, Enter). Resolves once the keys are sent. Needs `character.reset`. */
+    reset(): Promise<void>;
+  };
+  readonly game: {
+    /** Rejoins the game in wick.json's `game.placeId`, at most once a minute. Needs `game.rejoin`. */
+    rejoin(): Promise<void>;
+  };
 }
 
 export interface MacroDefinition {

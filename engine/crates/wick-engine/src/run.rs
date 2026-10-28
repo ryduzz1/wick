@@ -10,7 +10,7 @@ use crate::human::HumanProfile;
 use crate::input::{At, Command, InputState};
 use crate::region::RegionSpec;
 use crate::runtime::{MacroRuntime, Status};
-use crate::target::Target;
+use crate::target::{GameInfo, Target};
 use crate::tracker::Tracker;
 use crate::vision::{parse_color, ColorQuery};
 
@@ -30,6 +30,8 @@ pub struct MacroSpec {
     pub regions: HashMap<String, RegionSpec>,
     #[serde(default)]
     pub settings: Value,
+    #[serde(default)]
+    pub game: GameInfo,
     /// How human the input looks. Missing means exact input.
     #[serde(default)]
     pub human: Option<HumanProfile>,
@@ -64,6 +66,9 @@ impl RunEnd {
     }
 }
 
+/// A `screen.similar` check: id, region, reference signature, latest score.
+type Similar = (u64, String, Option<Vec<u8>>, Option<f64>);
+
 pub struct MacroRun {
     pub spec: MacroSpec,
     runtime: MacroRuntime,
@@ -76,6 +81,12 @@ pub struct MacroRun {
     viewport: Rect,
     pub loops: u64,
     pub ticks: u64,
+    similars: Vec<Similar>,
+    /// The state machine's current state and counters.
+    state: Option<String>,
+    timeouts: u64,
+    recoveries: u64,
+    last_rejoin: Option<f64>,
 }
 
 impl MacroRun {
@@ -119,6 +130,11 @@ impl MacroRun {
             viewport: target.viewport(),
             loops: 0,
             ticks: 0,
+            similars: Vec::new(),
+            state: None,
+            timeouts: 0,
+            recoveries: 0,
+            last_rejoin: None,
         })
     }
 
@@ -142,9 +158,72 @@ impl MacroRun {
         &mut self,
         cmd: Value,
         now: f64,
+        target: &mut dyn Target,
         emit: &mut dyn FnMut(&str, Value),
     ) -> Result<(), String> {
         match cmd["t"].as_str().unwrap_or_default() {
+            "similar" => {
+                let region = cmd["region"].as_str().unwrap_or_default().to_string();
+                self.region_rect(&region)?;
+                self.similars
+                    .push((cmd["id"].as_u64().unwrap_or(0), region, None, None));
+            }
+            "similarRetake" => {
+                let id = cmd["id"].as_u64().unwrap_or(0);
+                if let Some(s) = self.similars.iter_mut().find(|s| s.0 == id) {
+                    s.2 = None;
+                    s.3 = None;
+                }
+            }
+            "state" => {
+                let name = cmd["name"].as_str().unwrap_or_default().to_string();
+                match cmd["event"].as_str().unwrap_or_default() {
+                    "enter" => {
+                        emit("macro.step", json!({ "state": name, "at": now }));
+                        self.state = Some(name);
+                    }
+                    "timeout" => {
+                        self.timeouts += 1;
+                        emit(
+                            "macro.log",
+                            json!({ "text": format!("\"{name}\" timed out after {} ms.", cmd["after"]), "at": now }),
+                        );
+                    }
+                    "recover" => {
+                        self.recoveries += 1;
+                        emit(
+                            "macro.log",
+                            json!({ "text": format!("{}; going to \"{}\".", cmd["why"].as_str().unwrap_or("Recovering"), cmd["next"].as_str().unwrap_or("?")), "at": now }),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            "special" => {
+                let name = cmd["name"].as_str().unwrap_or_default();
+                if !self.permissions.contains(name) {
+                    return Err(format!(
+                        "This macro used \"{name}\" without declaring it. Add it to \"permissions\" in wick.json."
+                    ));
+                }
+                if name == "game.rejoin" {
+                    // One rejoin a minute at most, so a confused macro can't loop on it.
+                    if self.last_rejoin.is_some_and(|t| now - t < 60_000.0) {
+                        emit(
+                            "macro.log",
+                            json!({ "text": "Skipped a rejoin: the last one was less than a minute ago.", "at": now }),
+                        );
+                        return Ok(());
+                    }
+                    self.last_rejoin = Some(now);
+                }
+                let plan = target.special(name, &self.spec.game)?;
+                emit(
+                    "macro.log",
+                    json!({ "text": match name { "character.reset" => "Resetting the character.", "game.rejoin" => "Rejoining the game.", other => other }, "at": now }),
+                );
+                self.input.schedule_plan(plan, now);
+            }
             "track" => {
                 let region = cmd["region"].as_str().unwrap_or_default().to_string();
                 self.region_rect(&region)?;
@@ -200,6 +279,18 @@ impl MacroRun {
                     self.trackers[i].update(frame, rect, now);
                 }
             }
+            for (_, region, reference, score) in &mut self.similars {
+                if let Some(spec) = self.spec.regions.get(region.as_str()) {
+                    let sig = crate::frame::signature(&frame.crop(spec.resolve(self.viewport)));
+                    match reference {
+                        Some(r) => *score = Some(crate::frame::similarity(r, &sig)),
+                        None => {
+                            *reference = Some(sig);
+                            *score = Some(1.0);
+                        }
+                    }
+                }
+            }
             if let Some(trace) = &mut self.trace {
                 let points: Vec<Value> = self.trackers.iter().map(|t| t.trace_point()).collect();
                 trace.push(json!([now.round(), points]));
@@ -215,13 +306,14 @@ impl MacroRun {
             "focused": focused,
             "viewport": { "width": self.viewport.w, "height": self.viewport.h },
             "trackers": states,
+            "similar": self.similars.iter().map(|s| (s.0.to_string(), json!(s.3))).collect::<Map<_, _>>(),
         });
         let drained = match self.runtime.step(&state) {
             Ok(d) => d,
             Err(e) => return Some(RunEnd::Failed(e)),
         };
         for cmd in drained.commands {
-            if let Err(e) = self.handle(cmd, now, emit) {
+            if let Err(e) = self.handle(cmd, now, target, emit) {
                 return Some(RunEnd::Failed(e));
             }
         }
@@ -249,6 +341,9 @@ impl MacroRun {
             "ticks": self.ticks,
             "inputs": self.input.sent,
             "dropped": self.input.dropped,
+            "state": self.state,
+            "timeouts": self.timeouts,
+            "recoveries": self.recoveries,
             "score": target.score(),
         })
     }

@@ -95,10 +95,24 @@ function describeMacro(folder) {
   };
 }
 
+// The simulator session restarts when a macro needs different simulator settings.
+let sessionKey = null;
 async function ensureSession(target, scenario) {
-  if (sessionTarget === target && !scenario) return;
-  await engine.call('session.start', { target, ...(scenario ? { scenario } : {}) });
+  const key = `${target}:${target === 'sim' ? JSON.stringify(scenario ?? null) : ''}`;
+  if (sessionTarget === target && sessionKey === key) return;
+  // Never restart a session under a running macro; it would stop the run.
+  if (runningTarget === target) return;
+  await engine.call('session.start', { target, ...(target === 'sim' && scenario ? { scenario } : {}) });
   sessionTarget = target;
+  sessionKey = key;
+}
+
+function simulatorFor(folder) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(folder, 'wick.json'), 'utf8')).simulator ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function openTestBench() {
@@ -210,10 +224,11 @@ const actions = {
     savePreferences({ settings: { ...all, [id]: values } });
     return true;
   },
-  watch: ({ target }) => ensureSession(target),
+  watch: ({ target, folder }) => ensureSession(target, folder ? simulatorFor(folder) : null),
   async unwatch() {
     await engine.call('session.stop');
     sessionTarget = null;
+    sessionKey = null;
   },
   inputPreferences: () => ({ ...DEFAULT_INPUT, ...preferences().input }),
   runs: ({ id }) => runHistory().list(id),
@@ -224,7 +239,7 @@ const actions = {
   },
   async run({ folder, target, settings }) {
     const spec = await loadMacro(folder, { settings, input: preferences().input });
-    await ensureSession(target);
+    await ensureSession(target, spec.simulator);
     await engine.call('macro.run', { macro: spec });
     return { id: spec.id };
   },
@@ -234,7 +249,7 @@ const actions = {
     const spec = await loadMacro(folder, { settings, input: preferences().input });
     const runs = await Promise.all(
       Array.from({ length: seeds }, (_, i) =>
-        engine.call('sim.run', { macro: { ...spec, human: spec.human && { ...spec.human, seed: i + 1 } }, scenario: { seed: i + 1 }, seconds }),
+        engine.call('sim.run', { macro: { ...spec, human: spec.human && { ...spec.human, seed: i + 1 } }, scenario: { ...spec.simulator, seed: i + 1 }, seconds }),
       ),
     );
     return runs;
@@ -339,7 +354,7 @@ async function smokeReport() {
   // Run the new macro on the simulator briefly: the trace graph should fill.
   // For a screenshot of the graph, run the bar example instead.
   if (process.env.WICK_SMOKE_DIALOG === 'trace') {
-    await js(`[...document.querySelectorAll('#macroList button')].find((b) => b.textContent.includes('Bar minigame'))?.click()`);
+    await js(`[...document.querySelectorAll('#macroList button')].find((b) => b.textContent.includes(${JSON.stringify(process.env.WICK_SMOKE_EXAMPLE ?? 'Bar minigame')}))?.click()`);
     await sleep(800);
   }
   await js(`document.getElementById('runButton').click()`);
@@ -440,6 +455,7 @@ app.whenReady().then(async () => {
   });
   engine.on('exit', () => {
     sessionTarget = null;
+    sessionKey = null;
     runningTarget = null;
     forward('engine.exit', {});
   });

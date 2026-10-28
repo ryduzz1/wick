@@ -6,6 +6,7 @@ pub mod input;
 pub mod probe;
 pub mod record;
 pub mod region;
+pub mod roblox;
 pub mod rpc;
 pub mod run;
 pub mod runtime;

@@ -185,3 +185,13 @@ test('run history keeps each run with its log and trace', async () => {
   assert.equal(full.logs[0].text, 'hello');
   assert.throws(() => history.read('me/bar', '../x.json'), /Not a run file/);
 });
+
+test('the fishing loop example recovers on the simulator it describes', async () => {
+  const fishing = copyMacro(join(root, 'examples', 'fishing-loop'), dir, { author: 'tester' });
+  const r = await commands.run({ folder: fishing, target: 'sim', seconds: 45 });
+  assert.equal(r.end.reason, 'stopped', JSON.stringify(r.end));
+  assert.ok(r.score.rounds.won >= 8, JSON.stringify(r.score));
+  assert.equal(r.score.resets, 1, 'reset the stuck cast');
+  assert.equal(r.score.rejoins, 1, 'rejoined after the disconnect');
+  assert.ok(r.recoveries >= 2);
+});

@@ -531,6 +531,7 @@ mod tests {
             )]),
             settings: json!({}),
             human: None,
+            game: Default::default(),
         }
     }
 
@@ -602,6 +603,119 @@ mod tests {
         }
         assert!(checked > 500, "{checked} samples");
         assert!(worst < 0.01, "trace off by up to {worst} of the bar");
+    }
+
+    const LOOPING: &str = r##"
+        export default { async run(ctx) {
+          const zone = ctx.screen.track("bar", { color: "#3ccf5a", tolerance: 40 });
+          const tick = ctx.screen.track("bar", { color: "#ffffff", tolerance: 40, minPixels: 2 });
+          const prompt = ctx.screen.track("prompt", { color: "#f2c14e" });
+          const dialog = ctx.screen.track("dialog", { color: "#393b3d", tolerance: 6, minPixels: 200 });
+          const hud = ctx.screen.track("hud", { color: "#465a82" });
+          const stats = await ctx.states({
+            cast: { timeout: 3000, async run(s) { await s.waitUntil(() => prompt.seen); s.input.press("e"); return "bite"; } },
+            bite: { timeout: 3000, async run(s) { await s.waitUntil(() => zone.seen && tick.seen); return "play"; } },
+            play: { timeout: 4000, async run(s) {
+              await s.loop.hz(120, () => {
+                if (tick.seen && tick.x + tick.velocity * s.input.latency < zone.center) s.input.click({ minGap: 60 });
+              }, { until: () => zone.missingFor > 100 });
+              return "cast";
+            } },
+            recover: { timeout: 8000, async run(s) {
+              if (dialog.seen) { await s.game.rejoin(); await s.waitUntil(() => hud.seen && !dialog.seen); }
+              else { await s.character.reset(); await s.waitUntil(() => prompt.seen); }
+              return "cast";
+            } },
+          }, { recover: "recover", startPoint: "hud", loops: LOOPS });
+          ctx.log("stats", stats);
+        } };
+    "##;
+
+    fn looping_spec(loops: u32) -> MacroSpec {
+        let region = |anchor: &str, x: f64, y: f64, w: f64, h: f64| RegionSpec {
+            anchor: anchor.into(),
+            x,
+            y,
+            w,
+            h,
+        };
+        let mut s = spec(
+            &LOOPING.replace("LOOPS", &loops.to_string()),
+            &["mouse.click", "keyboard", "character.reset", "game.rejoin"],
+        );
+        s.regions
+            .insert("prompt".into(), region("top-center", 0.0, 0.11, 0.1, 0.08));
+        s.regions
+            .insert("hud".into(), region("bottom-left", 0.15, -0.06, 0.2, 0.04));
+        s.regions
+            .insert("dialog".into(), region("center", 0.0, 0.0, 0.4, 0.2));
+        s
+    }
+
+    fn looping_scenario() -> Scenario {
+        Scenario {
+            round_ms: 2000.0,
+            stuck_rounds: vec![2],
+            disconnect_at_ms: Some(15_000.0),
+            ..Scenario::default()
+        }
+    }
+
+    #[test]
+    fn a_state_machine_recovers_from_a_stuck_cast_and_a_disconnect() {
+        let r = run_headless(looping_spec(0), looping_scenario(), 40.0).unwrap();
+        assert_eq!(r["end"]["reason"], "stopped", "{r}");
+        let score = &r["score"];
+        assert!(score["rounds"]["played"].as_u64().unwrap() >= 8, "{r}");
+        assert!(score["rounds"]["won"].as_u64().unwrap() >= 6, "{r}");
+        assert_eq!(
+            score["resets"],
+            json!(1),
+            "one reset for the stuck cast: {r}"
+        );
+        assert_eq!(score["rejoins"], json!(1), "one rejoin: {r}");
+        assert!(r["recoveries"].as_u64().unwrap() >= 2, "{r}");
+        assert!(r["loops"].as_u64().unwrap() >= 8, "{r}");
+    }
+
+    #[test]
+    fn a_state_machine_stops_after_its_loops() {
+        let r = run_headless(looping_spec(3), looping_scenario(), 40.0).unwrap();
+        assert_eq!(r["end"]["reason"], "done", "{r}");
+        assert_eq!(
+            r["score"]["rounds"]["started"],
+            json!(3),
+            "three loops, one of them the stuck cast: {r}"
+        );
+        assert!(
+            r["logs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|l| l.as_str().unwrap().contains("\"loops\":3")),
+            "{r}"
+        );
+    }
+
+    #[test]
+    fn the_watchdog_stops_a_macro_that_keeps_timing_out() {
+        // Every cast is stuck and there's no reset permission to fix it.
+        let mut spec = looping_spec(0);
+        spec.permissions.retain(|p| p != "character.reset");
+        let r = run_headless(
+            spec,
+            Scenario {
+                stuck_rounds: (1..50).collect(),
+                ..looping_scenario()
+            },
+            40.0,
+        )
+        .unwrap();
+        let error = r["end"]["error"].as_str().unwrap_or_default();
+        assert!(
+            error.contains("character.reset") || error.contains("Watchdog"),
+            "{r}"
+        );
     }
 
     #[test]

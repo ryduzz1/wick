@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::frame::{Frame, Rect};
+use crate::frame::{change, signature, Frame, Rect};
 use crate::input::Action;
 use crate::region::RegionSpec;
 use crate::target::{HeardInput, Target};
@@ -57,36 +57,6 @@ const KEYFRAME_EVERY_MS: f64 = 1000.0;
 const THUMB_W: usize = 192;
 const SHEET_COLUMNS: usize = 4;
 const SHEET_TILES: usize = 12;
-
-/// A tiny grayscale copy for change scores. Each cell averages its block,
-/// so small moving things still register.
-fn signature(frame: &Frame) -> Vec<u8> {
-    const W: usize = 48;
-    const H: usize = 27;
-    let mut sums = vec![(0u32, 0u32); W * H];
-    for y in (0..frame.height).step_by(2) {
-        let j = y * H / frame.height;
-        for x in (0..frame.width).step_by(2) {
-            let [r, g, b] = frame.rgb(x, y);
-            let cell = &mut sums[j * W + x * W / frame.width];
-            cell.0 += (u32::from(r) * 3 + u32::from(g) * 6 + u32::from(b)) / 10;
-            cell.1 += 1;
-        }
-    }
-    sums.into_iter()
-        .map(|(sum, n)| (sum / n.max(1)) as u8)
-        .collect()
-}
-
-/// How different two signatures are, from 0 (same) to 1.
-fn change(a: &[u8], b: &[u8]) -> f64 {
-    let sum: u64 = a
-        .iter()
-        .zip(b)
-        .map(|(x, y)| u64::from(x.abs_diff(*y)))
-        .sum();
-    sum as f64 / (a.len().max(1) as f64 * 255.0)
-}
 
 struct Saved {
     t: f64,

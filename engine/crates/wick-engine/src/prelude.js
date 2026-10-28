@@ -8,6 +8,7 @@
 
   const queue = [];
   const trackers = new Map();
+  const similars = new Map();
   const timers = [];
   const lastClick = new Map();
   const settings = {};
@@ -75,7 +76,34 @@
     get missingFor() { return this.#state.missingFor ?? 0; }
   }
 
+  class Similar {
+    #score = null;
+    constructor(id, region, threshold) {
+      this.id = id;
+      this.region = region;
+      this.threshold = threshold;
+    }
+    _set(score) {
+      this.#score = score;
+    }
+    /** Share of the region that looks like the reference, 0 to 1; NaN until the reference is taken. */
+    get score() { return this.#score ?? NaN; }
+    get matches() { return this.#score != null && this.#score >= this.threshold; }
+    retake() {
+      this.#score = null;
+      queue.push({ t: "similarRetake", id: this.id });
+    }
+  }
+
   const screen = {
+    similar(region, options = {}) {
+      if (typeof region !== "string") fail("screen.similar(region) needs a region name");
+      const id = nextId++;
+      const s = new Similar(id, region, options.threshold ?? 0.9);
+      similars.set(id, s);
+      queue.push({ t: "similar", id, region });
+      return s;
+    },
     track(region, options = {}) {
       if (typeof region !== "string") fail("screen.track(region, options) needs a region name");
       if (typeof options.color !== "string") fail(`screen.track("${region}") needs a color, like { color: "#3ccf5a" }`);
@@ -117,48 +145,212 @@
     keyUp(key) { queue.push({ t: "keyUp", key: String(key) }); },
   };
 
-  const wait = (ms) => new Promise((resolve) => timers.push({ kind: "wait", at: now + Number(ms), resolve }));
+  // A state's timers belong to its scope, so a timeout can stop them.
+  class Cancelled extends Error {
+    constructor(state) {
+      super(`State "${state}" was stopped`);
+      this.name = "Cancelled";
+    }
+  }
 
-  const waitUntil = (check, options = {}) =>
-    new Promise((resolve, reject) =>
-      timers.push({
-        kind: "until",
-        check,
-        deadline: options.timeout != null ? now + options.timeout : Infinity,
-        resolve,
-        reject,
-      }),
-    );
-
-  const loop = {
-    hz(rate, body, options = {}) {
-      if (!(rate > 0)) fail("loop.hz(rate, fn) needs a rate above 0");
-      if (typeof body !== "function") fail("loop.hz(rate, fn) needs a function");
-      return new Promise((resolve, reject) =>
-        timers.push({
-          kind: "loop",
-          interval: 1000 / rate,
-          last: -Infinity,
-          body,
-          until: options.until,
-          end: options.for != null ? now + options.for : Infinity,
+  const timing = (scope) => {
+    const add = (tm) => {
+      if (scope?.cancelled) throw new Cancelled(scope.name);
+      tm.scope = scope;
+      timers.push(tm);
+    };
+    const wait = (ms) => new Promise((resolve, reject) => add({ kind: "wait", at: now + Number(ms), resolve, reject }));
+    const waitUntil = (check, options = {}) =>
+      new Promise((resolve, reject) =>
+        add({
+          kind: "until",
+          check,
+          deadline: options.timeout != null ? now + options.timeout : Infinity,
           resolve,
           reject,
         }),
       );
-    },
-    async repeat(times, body) {
-      const count = times > 0 ? times : Infinity;
-      for (let i = 0; i < count; i++) {
-        queue.push({ t: "loop", index: i });
-        await body(i);
-      }
-    },
+    const loop = Object.freeze({
+      hz(rate, body, options = {}) {
+        if (!(rate > 0)) fail("loop.hz(rate, fn) needs a rate above 0");
+        if (typeof body !== "function") fail("loop.hz(rate, fn) needs a function");
+        return new Promise((resolve, reject) =>
+          add({
+            kind: "loop",
+            interval: 1000 / rate,
+            last: -Infinity,
+            body,
+            until: options.until,
+            end: options.for != null ? now + options.for : Infinity,
+            resolve,
+            reject,
+          }),
+        );
+      },
+      async repeat(times, body) {
+        const count = times > 0 ? times : Infinity;
+        for (let i = 0; i < count; i++) {
+          queue.push({ t: "loop", index: i });
+          await body(i);
+        }
+      },
+    });
+    return { wait, waitUntil, loop };
   };
+
+  const cancel = (scope) => {
+    scope.cancelled = true;
+    for (let i = 0; i < timers.length; i++) {
+      if (timers[i].scope === scope) {
+        const [tm] = timers.splice(i--, 1);
+        tm.reject?.(new Cancelled(scope.name));
+      }
+    }
+  };
+
+  // Input from a stopped state is ignored.
+  const scopedInput = (scope) => {
+    const out = {};
+    for (const key of Object.keys(input)) {
+      const desc = Object.getOwnPropertyDescriptor(input, key);
+      if (typeof desc.value === "function") {
+        out[key] = (...args) => (scope.cancelled ? false : input[key](...args));
+      }
+    }
+    Object.defineProperty(out, "latency", { get: () => latency });
+    Object.defineProperty(out, "focused", { get: () => focused });
+    return Object.freeze(out);
+  };
+
+  const special = (name) => queue.push({ t: "special", name });
 
   const log = (...args) => queue.push({ t: "log", text: args.map(format).join(" ") });
 
-  const ctx = Object.freeze({ screen, input, loop, wait, waitUntil, log, settings, now: () => now });
+  const makeCtx = (scope) => {
+    const t = timing(scope);
+    const character = Object.freeze({
+      reset() {
+        if (scope?.cancelled) return Promise.reject(new Cancelled(scope.name));
+        special("character.reset");
+        return t.wait(1400);
+      },
+    });
+    const game = Object.freeze({
+      rejoin() {
+        if (!scope?.cancelled) special("game.rejoin");
+        return Promise.resolve();
+      },
+    });
+    return Object.freeze({
+      screen,
+      input: scope ? scopedInput(scope) : input,
+      loop: t.loop,
+      wait: t.wait,
+      waitUntil: t.waitUntil,
+      log,
+      settings,
+      character,
+      game,
+      states,
+      now: () => now,
+    });
+  };
+
+  // State machines: see docs/API.md#state-machines.
+  async function states(defs, options = {}) {
+    if (!defs || typeof defs !== "object") fail("states(defs, options) needs an object of states");
+    const names = Object.keys(defs);
+    if (!names.length) fail("states() needs at least one state");
+    for (const name of names) {
+      if (typeof defs[name]?.run !== "function") fail(`State "${name}" needs a run(ctx) function`);
+    }
+    const start = options.start ?? names[0];
+    const known = (name, where) => {
+      if (!(name in defs)) fail(`${where} names an unknown state "${name}". States: ${names.join(", ")}`);
+    };
+    known(start, "start");
+    if (options.recover != null) known(options.recover, "recover");
+    for (const name of names) if (defs[name].onTimeout != null) known(defs[name].onTimeout, `State "${name}" onTimeout`);
+    const dog = { maxTimeouts: 3, minSuccess: 0, ...(options.watchdog ?? {}) };
+    const point = options.startPoint == null ? null : typeof options.startPoint === "string" ? { region: options.startPoint } : options.startPoint;
+    const check = point ? screen.similar(point.region, { threshold: point.threshold ?? 0.9 }) : null;
+    const limit = options.loops > 0 ? options.loops : Infinity;
+    const t = timing(null);
+    const stats = { loops: 0, timeouts: 0, recoveries: 0 };
+    const results = [];
+    let inARow = 0;
+    let loopFailed = false;
+    let name = start;
+    let first = true;
+    const note = (event, extra = {}) => queue.push({ t: "state", name, event, ...extra });
+    const failLoop = (why) => {
+      loopFailed = true;
+      inARow++;
+      if (inARow > dog.maxTimeouts) throw new Error(`Watchdog: ${inARow} timeouts or failed checks in a row, the last in "${name}" (${why}).`);
+    };
+    const goRecover = (why, target) => {
+      failLoop(why);
+      const next = target ?? options.recover;
+      if (next == null) throw new Error(`${why}. Add a "recover" state (or onTimeout) to handle it.`);
+      if (next === options.recover) stats.recoveries++;
+      note("recover", { why, next });
+      return next;
+    };
+
+    for (;;) {
+      if (name === start) {
+        if (!first) {
+          results.push(!loopFailed);
+          if (results.length > 10) results.shift();
+          stats.loops++;
+          if (stats.loops >= limit) return stats;
+          const ok = results.filter(Boolean).length / results.length;
+          if (dog.minSuccess > 0 && results.length >= 10 && ok < dog.minSuccess) {
+            throw new Error(`Watchdog: only ${Math.round(ok * 100)}% of the last ${results.length} loops went cleanly (minimum ${Math.round(dog.minSuccess * 100)}%).`);
+          }
+          loopFailed = false;
+          if (check && !(await t.waitUntil(() => check.matches, { timeout: point.wait ?? 2000 }))) {
+            name = goRecover(`Not back at the start point ("${point.region}" ${(check.score * 100).toFixed(0)}% alike)`);
+            continue;
+          }
+        }
+        queue.push({ t: "loop", index: stats.loops });
+        first = false;
+      }
+      note("enter");
+      const def = defs[name];
+      const scope = { name, cancelled: false };
+      const running = Promise.resolve().then(() => def.run(makeCtx(scope)));
+      let outcome;
+      if (def.timeout > 0) {
+        let timer;
+        const timeout = new Promise((resolve) => {
+          timer = { kind: "wait", at: now + def.timeout, resolve: () => resolve({ timedOut: true }) };
+          timers.push(timer);
+        });
+        outcome = await Promise.race([running.then((next) => ({ next })), timeout]);
+        timer.at = -Infinity;
+        timer.resolve = () => {};
+      } else {
+        outcome = { next: await running };
+      }
+      if (outcome.timedOut) {
+        cancel(scope);
+        running.catch(() => {});
+        stats.timeouts++;
+        note("timeout", { after: def.timeout });
+        name = goRecover(`State "${name}" timed out after ${def.timeout} ms`, def.onTimeout);
+        continue;
+      }
+      inARow = 0;
+      const next = outcome.next;
+      if (next == null || next === "done") return stats;
+      if (!(next in defs)) throw new Error(`State "${name}" went to unknown state "${next}". States: ${names.join(", ")}`);
+      name = next;
+    }
+  }
+
+  const ctx = makeCtx(null);
 
   // Returns true when the timer is finished and should be removed.
   const runTimer = (tm) => {
@@ -224,6 +416,7 @@
     focused = s.focused;
     viewport = s.viewport;
     for (const id in s.trackers) trackers.get(Number(id))?._set(s.trackers[id]);
+    for (const id in s.similar ?? {}) similars.get(Number(id))?._set(s.similar[id]);
     for (let i = 0; i < timers.length; i++) {
       const tm = timers[i];
       let finished;

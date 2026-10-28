@@ -28,6 +28,7 @@ Times are in milliseconds since the run started, and `ctx.now()` returns the cur
 | | |
 | --- | --- |
 | `track(region, { color, tolerance?, minPixels? })` | Starts following a color inside a region from `regions.json`. `color` is `#rrggbb`; `tolerance` (default 30) is the largest difference allowed on any channel; `minPixels` (default 3) is the fewest matches that count as found. Returns a tracker. |
+| `similar(region, { threshold? })` | Starts comparing a region to how it looks on the next frame. Returns a check with `score` (the share of the region that still looks the same, 0 to 1), `matches` (`score` ≥ `threshold`, default 0.9) and `retake()`. Use it to tell whether you're back where you started. |
 | `width`, `height` | The game viewport's size in frame pixels. |
 
 ### Trackers
@@ -77,6 +78,38 @@ Anything still held when a run ends is released.
 | `wait(ms)` | Resolves after `ms`. |
 | `waitUntil(check, { timeout? })` | Resolves `true` once `check()` returns true, or `false` after `timeout` ms. |
 | `now()` | Milliseconds since the run started. |
+
+## State machines
+
+Anything that repeats, like fish, sell, repeat, is easiest to write as states. Each state does one step and returns the name of the next one. Give a state a `timeout`, and if it hasn't finished by then, the machine stops it and goes to a recovery state instead, so a stuck macro fixes itself rather than waiting forever.
+
+```ts
+const stats = await ctx.states({
+  cast: { timeout: 4000, async run(s) { await s.waitUntil(() => prompt.seen); s.input.press("e"); return "bite"; } },
+  bite: { timeout: 3000, async run(s) { await s.waitUntil(() => bar.seen); return "play"; } },
+  play: { timeout: 10_000, async run(s) { /* the minigame */ return "cast"; } },
+  recover: { timeout: 15_000, async run(s) { await s.character.reset(); await s.waitUntil(() => prompt.seen); return "cast"; } },
+}, { recover: "recover", startPoint: "hud", loops: 0 });
+```
+
+| Option | |
+| --- | --- |
+| `start` | The state each loop starts from (default: the first). Every return to it counts as a loop. |
+| `loops` | Stop after this many loops; 0 runs until a state returns `"done"`. |
+| `recover` | Where timeouts and failed start-point checks go, unless the state has its own `onTimeout`. Without one, a timeout stops the macro with an error. |
+| `startPoint` | A region name (or `{ region, threshold?, wait? }`) that must look the way it did at the first loop before each later loop begins. It waits up to `wait` ms (default 2000), then goes to `recover`. |
+| `watchdog` | `maxTimeouts` (default 3): stop after that many timeouts or failed checks in a row. `minSuccess` (default off): stop when fewer than that share of the last 10 loops went without a timeout. |
+
+Each state's `run` gets its own `ctx`. Use it, not the outer one, for waits, loops and input inside the state: when the state times out, its waits and loops stop and its input is ignored. `states()` resolves with `{ loops, timeouts, recoveries }`. The app shows the current state while it runs, and the run's log notes every timeout and recovery.
+
+## Game actions
+
+| | Permission | |
+| --- | --- | --- |
+| `character.reset()` | `character.reset` | Resets your character. On Roblox: Esc, R, Enter, with pauses for the menu. Resolves after the keys are sent; wait for your HUD or prompt to come back. |
+| `game.rejoin()` | `game.rejoin` | Rejoins the game in `wick.json`'s `game.placeId` through Roblox's `roblox://` link. At most once a minute. |
+
+On the simulator both work on its looping game (see [FORMAT.md](FORMAT.md#simulator)); on the test bench they aren't available.
 
 ## Other
 

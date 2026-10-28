@@ -114,7 +114,7 @@ function refreshRunLabel() {
   const elapsed = state.lastStats ? fmtSeconds(state.lastStats.elapsed) : '0s';
   if (s && !s.found) setRunState('waiting', `Waiting for ${TARGET_LABELS[state.target]}`);
   else if (s && !s.focused) setRunState('paused', `Paused: click the ${TARGET_LABELS[state.target]} window so it has focus`);
-  else setRunState('running', `Running · ${elapsed}`);
+  else setRunState('running', `Running · ${elapsed}${state.step ? ` · ${state.step}` : ''}`);
 }
 
 // MARK: Macro list and selection
@@ -308,6 +308,8 @@ async function select(m) {
   $('macroView').classList.remove('hidden');
   call('watchMacro', { folder: m.folder }).catch(() => {});
   if (!state.target) await chooseTarget(TARGET_ORDER.includes(m.target) ? m.target : 'sim');
+  // The simulator plays the game this macro describes in wick.json, if any.
+  else if (state.target === 'sim' && !state.running) call('watch', { target: 'sim', folder: m.folder }).catch(() => {});
 }
 
 /** Picks up changes made outside the app, by an editor or an agent. */
@@ -332,7 +334,7 @@ async function chooseTarget(id) {
   renderTargets();
   clearLive();
   try {
-    await call('watch', { target: id });
+    await call('watch', { target: id, folder: state.selected?.folder });
   } catch (e) {
     toast('Couldn\'t watch that target', e.message, 'error');
   }
@@ -524,7 +526,17 @@ function showMacroStats(m) {
   $('tileElapsed').textContent = fmtSeconds(m.elapsed);
   $('tileInputs').textContent = String(m.inputs);
   $('tileDropped').textContent = String(m.dropped);
-  $('tileScore').textContent = m.score ? pct(m.score.inZone) : '—';
+  if (m.score?.rounds) {
+    $('tileScore').textContent = `${m.score.rounds.won}/${m.score.rounds.played}`;
+    $('tileScoreLabel').textContent = 'Rounds won (simulator)';
+  } else if (m.score) {
+    $('tileScore').textContent = pct(m.score.inZone);
+    $('tileScoreLabel').textContent = 'In zone (simulator)';
+  } else {
+    const recovered = m.recoveries ? `, ${m.recoveries} recovered` : '';
+    $('tileScore').textContent = String(m.loops ?? 0);
+    $('tileScoreLabel').textContent = `Loops${recovered}`;
+  }
   refreshRunLabel();
 }
 
@@ -636,6 +648,7 @@ async function run() {
     await saveSettings();
     state.running = { folder: m.folder, target: state.target };
     state.lastStats = null;
+    state.step = null;
     trace.clear();
     setRunState('running', 'Starting…');
     log(`Started on ${TARGET_LABELS[state.target]}.`);
@@ -872,6 +885,10 @@ wick.onEvent((method, params) => {
       break;
     case 'runs.saved':
       if (params.id === state.selected?.id) loadRuns();
+      break;
+    case 'macro.step':
+      state.step = params.state;
+      refreshRunLabel();
       break;
     case 'macro.trace':
       trace.push(params);

@@ -62,6 +62,17 @@ Built as one large pass:
 
 **Verification:** human profile tests check delay means and spreads against precision, session drift, hold spread, that paths curve, sometimes overshoot and always end on target, that turns add up, and that inputs never reorder; the example still averages over 80% in the zone on `sim` with the profile at 0.85. Recorder tests check keyframes, change scores, Wick and "you" inputs with positions, and the contact sheet. A trace test checks the tick's traced position against the simulator's true position on every frame (within 1% of the bar). Node tests cover `record` with `--run` on `sim` and run history (saving, listing, trimming, reading). The app smoke test runs a macro, checks the trace graph and the saved run, and changes a setting. The Windows hooks type-check with `cargo clippy --target x86_64-pc-windows-msvc`.
 
+### Pass 5: State machines, looping and the Roblox target's extras (planned passes 9 and 10)
+
+- **`ctx.states()`:** states that return the next state's name, per-state timeouts that stop the state's waits, loops and input, a recovery state, loop limits, a start-point check before each loop (`screen.similar`), and watchdogs (too many timeouts in a row, or too few clean loops out of the last 10). The app shows the current state in the run label, and timeouts and recoveries in the log and stats.
+- **`screen.similar(region)`:** how much a region still looks like its reference, for start points and "is the menu open" checks.
+- **Game actions:** `character.reset()` (Esc, R, Enter on Roblox) and `game.rejoin()` (the `roblox://` link for `game.placeId`, at most once a minute), each behind its permission. Roblox-specific code is in `roblox.rs`.
+- **Simulator:** a looping game (prompt, cast, round) with injectable failures (stuck casts, a disconnect), simulated reset and rejoin, and per-macro simulator setup in `wick.json`. The live view, runs, tests and agent tools use the macro's setup.
+- **Example:** `examples/fishing-loop`, a state machine that recovers from both failures.
+- The human profile now keeps each key's hold in multi-key sequences.
+
+**Verification:** sim tests run a state-machine macro for 40 seconds with a stuck cast and a disconnect: it plays at least 8 rounds, resets once, rejoins once and recovers at least twice; with a loop limit it stops after exactly 3 loops; without the reset permission it stops with a clear error. Simulator tests cover rounds, stuck casts and disconnects; Roblox tests check the reset key order and that rejoin needs a place ID. A Node test runs the fishing example through the command layer with human input and checks the same recoveries.
+
 ## Still to test by hand
 
 Kept for the end-to-end test once the app is finished:
@@ -72,20 +83,13 @@ Kept for the end-to-end test once the app is finished:
 - Human input: watch the mouse paths and click timing on the test bench at a few precision values; the example should still keep up at 0.85.
 - `wick record --you` on the test bench: your clicks and keys show up in `record.jsonl` with the right positions, Wick's own clicks are marked `wick`, and nothing is logged while another window has focus.
 - The trace graph and the Runs card during and after a live run on the test bench.
+- `character.reset()` in a Roblox game that allows macros: the menu opens, R and Enter land, and the macro carries on once you respawn.
+- `game.rejoin()` after a real disconnect: whether the `roblox://` link rejoins in the open client on macOS and Windows.
 - Everything on Windows.
 
 ## Build plan
 
 Left over from earlier passes, to fold into the passes below: a `dist:dir` packaged build, `template` and `similar` detectors and a PNG fixture set, measured (rather than fixed) input latency on real windows, and a per-frame detector benchmark. Modifier keys pressed on their own (shift, control) aren't heard by `record --you` on macOS yet.
-
-### Pass 5: State machines, looping and the Roblox target's extras
-
-- `states()` API: each state with a check, a timeout and a recovery step; `loop.repeat(n)`, with 0 meaning forever.
-- Start-point snapshot and check before every loop.
-- Roblox extras: `character.reset`, and `game.rejoin` through the `roblox://` link when the disconnect dialog is detected.
-- Watchdogs: stop or alert when the success rate drops or a state keeps timing out.
-
-**Checks:** sim tests with injected failures (zone disappears, "disconnect") that verify recovery. Manual: a looping macro in a real game that allows macros, including a forced reset.
 
 ### Pass 6: Sharing
 

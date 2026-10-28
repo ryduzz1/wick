@@ -1,0 +1,16 @@
+{
+  "wick": 1,
+  "id": "wick/fishing-loop",
+  "name": "Fishing loop",
+  "version": "0.1.0",
+  "description": "Casts, plays the bar minigame, and repeats, recovering from stuck casts and disconnects.",
+  "author": "wick",
+  "target": "sim",
+  "entry": "main.ts",
+  "permissions": ["mouse.click", "keyboard", "character.reset", "game.rejoin"],
+  "settings": {
+    "loops": { "type": "integer", "min": 0, "default": 0, "label": "Rounds to play (0 = forever)" },
+    "minGap": { "type": "number", "min": 10, "max": 500, "default": 60, "label": "Minimum time between clicks (ms)" }
+  },
+  "simulator": { "roundMs": 2500, "stuckRounds": [3], "disconnectAtMs": 30000 }
+}

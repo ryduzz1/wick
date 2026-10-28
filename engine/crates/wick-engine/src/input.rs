@@ -214,13 +214,18 @@ impl InputState {
                 )]
             }
         };
+        self.schedule_plan(plan, now);
+        Ok(())
+    }
+
+    /// Schedules a planned sequence, with times relative to `now`.
+    pub fn schedule_plan(&mut self, plan: Vec<Step>, now: f64) {
         match &mut self.human {
             Some(human) => self.scheduled.extend(human.apply(plan, now, now)),
             None => self
                 .scheduled
                 .extend(plan.into_iter().map(|s| (now + s.at, s.action))),
         }
-        Ok(())
     }
 
     /// Sends everything due by `now`, in order. Input is dropped while the

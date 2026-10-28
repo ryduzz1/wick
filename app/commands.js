@@ -105,10 +105,10 @@ export function createCommands(host) {
     return t;
   };
 
-  async function onTarget(target) {
+  async function onTarget(target, scenario) {
     const busy = host.busyTarget?.();
     if (busy && busy !== target) throw new MacroError(`A macro is running on ${busy}. Stop it first (wick stop).`);
-    await host.ensureSession(target);
+    await host.ensureSession(target, target === 'sim' && !busy ? scenario : undefined);
     notify('target', { target });
   }
 
@@ -181,7 +181,7 @@ export function createCommands(host) {
       const t = pickTarget(target, folder);
       const { regions } = macroInfo(folder);
       const spec = regionFor(region, regions);
-      await onTarget(t);
+      await onTarget(t, readManifest(folder)?.simulator);
       const file = out ?? path.join(outDir(folder, 'observe'), `${t}-${region ?? 'window'}-${stamp()}.png`);
       const result = await withFrame('session.snapshot', { path: file, region: spec });
       notify('log', { text: `Agent saved a ${region ? `"${region}"` : 'window'} snapshot of ${t}.` });
@@ -192,7 +192,7 @@ export function createCommands(host) {
       const t = pickTarget(target, folder);
       const { regions } = macroInfo(folder);
       const spec = regionFor(region, regions);
-      await onTarget(t);
+      await onTarget(t, readManifest(folder)?.simulator);
       const maskPath = mask ? (typeof mask === 'string' ? mask : path.join(outDir(folder, 'detect'), `${t}-${region ?? 'window'}-${stamp()}.png`)) : undefined;
       const result = await withFrame('session.detect', { region: spec, color, tolerance, minPixels, mask: maskPath });
       return { target: t, region: region ?? null, ...result, note: 'Match positions are fractions of the region. Palette colors are averages of similar pixels; use one as a starting color.' };
@@ -202,7 +202,7 @@ export function createCommands(host) {
       const t = pickTarget(target, folder);
       const { regions } = macroInfo(folder);
       const cmd = normalizeCommand(command);
-      await onTarget(t);
+      await onTarget(t, readManifest(folder)?.simulator);
       const result = await engine.call('session.act', { command: cmd, regions });
       notify('log', { text: `Agent sent ${cmd.t}${cmd.key ? ` ${cmd.key}` : ''} to ${t}.` });
       return { target: t, command: cmd, ...result };
@@ -219,8 +219,8 @@ export function createCommands(host) {
         sampleHz: Number(sampleHz),
       };
       if (!spec.track.length) throw new MacroError('A probe needs at least one tracker: { name, region, color }.');
-      if (t === 'sim') return { target: t, ...(await engine.call('sim.probe', { ...spec, scenario })) };
-      await onTarget(t);
+      if (t === 'sim') return { target: t, ...(await engine.call('sim.probe', { ...spec, scenario: scenario ?? readManifest(folder)?.simulator })) };
+      await onTarget(t, readManifest(folder)?.simulator);
       notify('log', { text: `Agent started a ${spec.seconds}s probe on ${t}.` });
       return { target: t, ...(await engine.call('session.probe', spec)) };
     },
@@ -232,8 +232,8 @@ export function createCommands(host) {
       const spec = { dir, seconds: Number(seconds), fps: Number(fps), region: regionFor(region, regions), you: Boolean(you) };
       const macro = run ? await loadMacro(folder, { settings: host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact) }) : undefined;
       const note = 'record.jsonl has one line per sample ({ t, change, frame? }) and per input ({ t, by: "wick"|"you", input, ... }); times are ms from the start and click positions are fractions of the recorded area. contact.png shows the frames listed in "sheet", left to right, top to bottom.';
-      if (t === 'sim' && !live) return { target: t, ...(await engine.call('sim.record', { ...spec, macro, scenario })), note };
-      await onTarget(t);
+      if (t === 'sim' && !live) return { target: t, ...(await engine.call('sim.record', { ...spec, macro, scenario: scenario ?? manifest?.simulator })), note };
+      await onTarget(t, manifest?.simulator);
       notify('log', { text: `Agent started a ${spec.seconds}s recording of ${t}${you ? ', including your clicks and keys' : ''}.` });
       if (macro) {
         if (host.busyTarget?.()) throw new MacroError('A macro is already running. Stop it first, or record without --run.');
@@ -278,11 +278,11 @@ export function createCommands(host) {
       const manifest = readManifest(folder);
       const spec = await loadMacro(folder, { settings: settings ?? host.savedSettings?.(manifest?.id) ?? {}, input: inputFor(exact) });
       if (t === 'sim' && !live) {
-        const result = await engine.call('sim.run', { macro: spec, scenario, seconds: Number(seconds ?? 30) });
+        const result = await engine.call('sim.run', { macro: spec, scenario: scenario ?? spec.simulator, seconds: Number(seconds ?? 30) });
         lastRun = { target: t, folder, at: new Date().toISOString(), ...result };
         return lastRun;
       }
-      await onTarget(t);
+      await onTarget(t, readManifest(folder)?.simulator);
       const limit = Number(seconds ?? 30);
       const watch = await waitForEnd(limit);
       try {
@@ -311,7 +311,7 @@ export function createCommands(host) {
       // Each game gets its own input seed, so results repeat run to run.
       const runs = await Promise.all(
         Array.from({ length: n }, (_, i) =>
-          engine.call('sim.run', { macro: { ...spec, human: spec.human && { ...spec.human, seed: i + 1 } }, scenario: { seed: i + 1 }, seconds: Number(seconds) }),
+          engine.call('sim.run', { macro: { ...spec, human: spec.human && { ...spec.human, seed: i + 1 } }, scenario: { ...spec.simulator, seed: i + 1 }, seconds: Number(seconds) }),
         ),
       );
       const scores = runs.map((r) => r.score?.inZone ?? 0);

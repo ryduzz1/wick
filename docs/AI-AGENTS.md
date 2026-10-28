@@ -43,7 +43,7 @@ Agent input goes through the same gate as a macro's: only to the target window, 
 1. **Look.** `observe`, then draw regions around the moving parts with `region set`.
 2. **Detect.** `detect` each region to find exact colors from its palette, then check matches with `--mask`.
 3. **Measure.** `probe` to get the mechanics as numbers. For a sequence you don't understand yet, `record --you` while the person plays it once, then read `record.jsonl` and the contact sheet. For the bar minigame: the tick's drift with no input, how far one click pushes it, how often the zone jumps, and the latency.
-4. **Write** the controller in `main.ts` from those measurements, not guesses.
+4. **Write** the controller in `main.ts` from those measurements, not guesses. Multi-step tasks become a state machine (`ctx.states()`): one state per step, each with a timeout, a recovery state that gets back to a known place, and a start-point check before each loop. See [API.md](API.md#state-machines) and `examples/fishing-loop`.
 5. **Test.** `run` with a short limit, read the result and log, and fix what fails. Repeat until it's reliable.
 6. **Wrap up.** Fill in the manifest's `settings`, `permissions` and `README.md`.
 

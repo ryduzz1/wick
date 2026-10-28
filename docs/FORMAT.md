@@ -1,6 +1,6 @@
 # Macro format and sharing
 
-> Format version 1. Folders, `wick.json`, `regions.json`, the entry file, settings and permissions work today; templates, `start.png`, `.wick` packages, installing and calibration are planned. See the [roadmap](ROADMAP.md).
+> Format version 1. Folders, `wick.json`, `regions.json`, the entry file, settings, permissions and the simulator setup work today; templates, `start.png`, `.wick` packages, installing and calibration are planned. See the [roadmap](ROADMAP.md).
 
 A macro is a folder. Everything needed to run it is inside, and everything personal to one user (calibration, settings, recordings) lives outside it. That split is what makes a macro shareable: you can zip the folder, send it, and the other person's copy behaves the same once calibrated to their screen.
 
@@ -39,7 +39,8 @@ Setting types are `number`, `integer`, `boolean` and `string`. Numbers are clamp
 
 - `target` is the window the macro controls: `roblox` for real macros, `sim` or `testbench` while developing. See [targets](ARCHITECTURE.md#targets). The macro can't send input anywhere else.
 - `id` is `author/name`. Updates match on `id`; a new `version` replaces the code and keeps the user's settings and calibration.
-- `game.placeId` lets Wick warn you when you run a macro in a different game. It never blocks.
+- `game.placeId` is the place `game.rejoin()` joins, and lets Wick warn you when you run a macro in a different game. It never blocks.
+- `simulator` (optional) describes the simulated game the macro is tested on; see [below](#simulator).
 - `settings` describes options the user can change in the UI without editing code. The macro reads them through `ctx.settings`.
 
 ## `regions.json`
@@ -110,6 +111,26 @@ The manifest lists the kinds of input a macro uses, and the install screen shows
 | `game.rejoin` | Rejoin the game after a disconnect |
 
 A macro that uses an input it didn't declare is stopped and reported.
+
+## Simulator
+
+The `sim` target plays a bar minigame. A macro can ask for a different setup in `wick.json`, which Wick uses whenever it runs or tests the macro on the simulator:
+
+```json
+"simulator": { "roundMs": 2500, "stuckRounds": [3], "disconnectAtMs": 30000 }
+```
+
+| Field | Default | |
+| --- | --- | --- |
+| `roundMs` | 0 | Round length. With a value, the game loops: a yellow prompt (top center) waits for E, the bar appears `castMs` later, and the prompt returns when the round ends. 0 is one endless round. |
+| `castMs` | 800 | From E to the bar. |
+| `winShare` | 0.6 | A round is won when the tick was in the zone this share of it. |
+| `stuckRounds` | none | Rounds (from 1) whose cast never lands until the character is reset. |
+| `disconnectAtMs` | none | When a disconnect dialog covers the game; `game.rejoin()` brings it back after `rejoinMs` (3000). |
+| `resetMs` | 1500 | How long a character reset takes. |
+| `drift`, `push`, `pushMs`, `zone`, `jumpMs`, `jumpRange`, `latencyMs`, `seed` | | The minigame's own tuning. |
+
+A blue HUD sits at the bottom left except while resetting or rejoining. The simulator's score then reports rounds started, played and won, resets and rejoins.
 
 ## Per-user data
 

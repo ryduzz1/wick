@@ -218,6 +218,9 @@ impl Humanizer {
         self.last_start = start;
         let mut out = Vec::new();
         let mut shift = 0.0;
+        // The last press, as (planned offset, actual time), so a release
+        // keeps a varied version of its planned hold.
+        let mut pressed: Option<(f64, f64)> = None;
         for step in plan {
             match step.action {
                 Action::MoveTo { x, y } => {
@@ -242,13 +245,20 @@ impl Humanizer {
                     }
                 }
                 ref release @ (Action::Button { down: false, .. }
-                | Action::Key { down: false, .. })
-                    if step.at > 0.0 =>
-                {
-                    let hold = self.hold(step.at);
-                    out.push((start + shift + hold, release.clone()));
+                | Action::Key { down: false, .. }) => {
+                    let t = match pressed.take() {
+                        Some((planned, actual)) if step.at > planned => {
+                            actual + self.hold(step.at - planned)
+                        }
+                        _ => start + shift + step.at,
+                    };
+                    out.push((t, release.clone()));
                 }
-                other => out.push((start + shift + step.at, other)),
+                press @ (Action::Button { down: true, .. } | Action::Key { down: true, .. }) => {
+                    let t = start + shift + step.at;
+                    pressed = Some((step.at, t));
+                    out.push((t, press));
+                }
             }
         }
         out
@@ -381,6 +391,29 @@ mod tests {
             times.windows(2).all(|w| w[1] > w[0]),
             "a release never lands before its press"
         );
+    }
+
+    #[test]
+    fn key_sequences_keep_each_hold() {
+        let mut h = human(0.85);
+        let key = |name: &str, at: f64, down: bool| Step {
+            at,
+            action: Action::Key {
+                name: name.into(),
+                down,
+            },
+        };
+        let plan = vec![
+            key("escape", 0.0, true),
+            key("escape", 40.0, false),
+            key("r", 500.0, true),
+            key("r", 540.0, false),
+        ];
+        let out = h.apply(plan, 0.0, 0.0);
+        let held = |i: usize| out[i + 1].0 - out[i].0;
+        assert!((20.0..70.0).contains(&held(0)), "{out:?}");
+        assert!((20.0..70.0).contains(&held(2)), "{out:?}");
+        assert!(out[2].0 - out[0].0 > 450.0);
     }
 
     #[test]

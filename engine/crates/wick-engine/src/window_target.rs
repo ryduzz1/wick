@@ -7,8 +7,9 @@ use serde_json::{json, Value};
 use wick_platform::{Capture, WindowInfo};
 
 use crate::frame::{Frame, Rect};
+use crate::human::Step;
 use crate::input::Action;
-use crate::target::{HeardInput, Target};
+use crate::target::{GameInfo, HeardInput, Target};
 
 /// The test bench window's title. Open it from the Wick app, which gives it a
 /// window of its own; in a browser tab the browser's toolbars would sit inside
@@ -210,6 +211,15 @@ impl Target for WindowTarget {
 
     fn latency(&self) -> f64 {
         DEFAULT_LATENCY
+    }
+
+    fn special(&mut self, name: &str, game: &GameInfo) -> Result<Vec<Step>, String> {
+        match self.kind {
+            WindowKind::Roblox => crate::roblox::special(name, game),
+            WindowKind::Testbench => Err(format!(
+                "\"{name}\" is only available on the roblox target."
+            )),
+        }
     }
 
     fn listen(&mut self, on: bool) -> Result<(), String> {
