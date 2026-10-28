@@ -297,6 +297,7 @@ async function select(m) {
   state.selected = m;
   renderHeader(m);
   $('simResults').classList.add('hidden');
+  loadRuns();
   renderSettings(m);
   renderDetails(m);
   live.select(null);
@@ -553,6 +554,81 @@ const trace = new TraceGraph($('traceCanvas'), {
   },
 });
 
+// MARK: Run history
+
+function timeAgo(iso) {
+  const s = (Date.now() - Date.parse(iso)) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+const END_DOTS = { done: 'dot', error: 'dot red', stopped: 'dot' };
+
+function endText(end) {
+  if (!end) return 'Unknown';
+  if (end.reason === 'done') return 'Done';
+  if (end.reason === 'error') return 'Error';
+  return end.detail === 'kill switch' ? 'Kill switch' : end.detail === 'time limit' ? 'Time limit' : 'Stopped';
+}
+
+async function loadRuns() {
+  const m = state.selected;
+  if (!m) return;
+  const runs = await call('runs', { id: m.id }).catch(() => []);
+  $('runsCard').classList.toggle('hidden', runs.length === 0);
+  $('runDetail').classList.add('hidden');
+  const list = $('runList');
+  list.replaceChildren();
+  for (const r of runs) {
+    const row = document.createElement('button');
+    row.className = 'run-row';
+    row.innerHTML = '<i></i><b></b><span class="when"></span><span class="took"></span><span class="score"></span>';
+    row.querySelector('i').className = END_DOTS[r.end?.reason] ?? 'dot';
+    row.querySelector('b').textContent = `${endText(r.end)} · ${TARGET_LABELS[r.target] ?? r.target ?? ''}`;
+    row.querySelector('.when').textContent = timeAgo(r.at);
+    row.querySelector('.took').textContent = fmtSeconds(r.elapsed ?? 0);
+    row.querySelector('.score').textContent = r.score ? pct(r.score.inZone) : `${r.inputs ?? 0} inputs`;
+    row.onclick = () => showRun(r, row);
+    list.append(row);
+  }
+}
+
+async function showRun(summary, row) {
+  if (state.running) {
+    toast('A macro is running', 'Stop it to look at an earlier run.');
+    return;
+  }
+  const m = state.selected;
+  try {
+    const run = await call('readRun', { id: m.id, file: summary.file });
+    for (const el of $('runList').children) el.setAttribute('aria-current', String(el === row));
+    trace.clear();
+    trace.push(run.trace ?? {});
+    $('traceCard').classList.toggle('hidden', trace.empty);
+    $('runDetailTitle').textContent = `${endText(run.end)} after ${fmtSeconds(run.elapsed ?? 0)}, ${new Date(run.at).toLocaleString()}${run.end?.error ? ` — ${run.end.error.split('\n')[0]}` : ''}`;
+    const log = $('runDetailLog');
+    log.replaceChildren();
+    for (const line of run.logs ?? []) {
+      const li = document.createElement('li');
+      li.innerHTML = '<time></time><span></span>';
+      li.querySelector('time').textContent = line.at == null ? '' : fmtSeconds(line.at);
+      li.querySelector('span').textContent = typeof line.text === 'string' ? line.text : JSON.stringify(line.text);
+      log.append(li);
+    }
+    if (run.end?.reason === 'error') {
+      const li = document.createElement('li');
+      li.innerHTML = '<time></time><span class="error"></span>';
+      li.querySelector('span').textContent = run.end.error;
+      log.append(li);
+    }
+    $('runDetail').classList.remove('hidden');
+  } catch (e) {
+    toast('Couldn\'t open the run', e.message, 'error');
+  }
+}
+
 async function run() {
   const m = state.selected;
   if (!m || !state.target) return;
@@ -793,6 +869,9 @@ wick.onEvent((method, params) => {
       break;
     case 'macro.log':
       log(params.text);
+      break;
+    case 'runs.saved':
+      if (params.id === state.selected?.id) loadRuns();
       break;
     case 'macro.trace':
       trace.push(params);

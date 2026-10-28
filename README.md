@@ -8,7 +8,7 @@ Macros are small TypeScript programs packaged as folders. They are easy to share
 
 AI agents can write macros too. Wick gives an agent (Claude Code, or any agent that can run a command or use MCP) tools to look at the game, record clips, run small experiments ("click five times and track the white marker"), and read back the numbers. The agent works out how the game behaves, writes the macro, tests it, and iterates. The agent writes the macro; it doesn't play the game itself, so the macro runs at full speed without a model in the loop.
 
-> **Status:** in development. The engine, macro runtime, simulator, test bench, the app with its library and region editor, and the agent tools (CLI and MCP) work. Recording, human-like input, looping and recovery, sharing and packaged builds are next. See the [roadmap](docs/ROADMAP.md).
+> **Status:** in development. The engine, macro runtime, simulator, test bench, the app with its library and region editor, the agent tools (CLI and MCP), recordings, trace graphs, run history and human-like input work. Looping and recovery, sharing and packaged builds are next. See the [roadmap](docs/ROADMAP.md).
 
 ## Run from source
 

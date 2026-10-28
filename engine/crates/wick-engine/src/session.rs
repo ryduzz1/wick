@@ -580,6 +580,31 @@ mod tests {
     }
 
     #[test]
+    fn traces_match_the_simulation() {
+        let mut target = SimTarget::new(Scenario::default(), false);
+        let mut run = MacroRun::start(spec(CONTROLLER, &["mouse.click"]), &target).unwrap();
+        run.trace = Some(Vec::new());
+        let (mut worst, mut checked) = (0.0f64, 0);
+        while target.now_ms() < 5000.0 {
+            let frame = target.next_frame(Duration::ZERO);
+            run.tick(&mut target, frame.as_deref(), &mut |_, _| {});
+            let Some(sample) = run.trace.as_mut().unwrap().pop() else {
+                continue;
+            };
+            // Trackers in the order the macro made them: zone, then tick.
+            let Some(x) = sample[1][1][0].as_f64() else {
+                continue;
+            };
+            // The region is 0.46 wide around the 0.42-wide bar.
+            let bar = 0.5 + (x - 0.5) * 0.46 / crate::sim::BAR_W;
+            worst = worst.max((bar - target.game.tick).abs());
+            checked += 1;
+        }
+        assert!(checked > 500, "{checked} samples");
+        assert!(worst < 0.01, "trace off by up to {worst} of the bar");
+    }
+
+    #[test]
     fn doing_nothing_scores_badly() {
         let idle = r#"export default { async run(ctx) { await ctx.wait(1e9); } };"#;
         let r = run_headless(spec(idle, &[]), Scenario::default(), 20.0).unwrap();

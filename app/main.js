@@ -8,6 +8,7 @@ import { createCommands } from './commands.js';
 import { serve } from './control.js';
 import * as library from './library.js';
 import { checkManifest, DEFAULT_INPUT, loadMacro, MacroError } from './macro-loader.js';
+import { RunHistory } from './runs.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(directory, '..');
@@ -48,6 +49,9 @@ function exampleFolders() {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir).map((name) => path.join(dir, name)).filter((p) => fs.existsSync(path.join(p, 'wick.json')));
 }
+
+let history = null;
+const runHistory = () => (history ??= new RunHistory(path.join(app.getPath('userData'), 'runs')));
 
 const libraryDir = () => process.env.WICK_LIBRARY || preferences().library || library.defaultLibrary();
 
@@ -212,6 +216,8 @@ const actions = {
     sessionTarget = null;
   },
   inputPreferences: () => ({ ...DEFAULT_INPUT, ...preferences().input }),
+  runs: ({ id }) => runHistory().list(id),
+  readRun: ({ id, file }) => runHistory().read(id, file),
   saveInputPreferences(input) {
     savePreferences({ input: { ...DEFAULT_INPUT, ...preferences().input, ...input } });
     return { ...DEFAULT_INPUT, ...preferences().input };
@@ -257,6 +263,7 @@ async function startControl() {
     busyTarget: () => runningTarget,
     savedSettings: (id) => preferences().settings?.[id] ?? {},
     inputPreferences: () => ({ ...DEFAULT_INPUT, ...preferences().input }),
+    runHistory: () => runHistory(),
     get libraryDir() {
       return libraryDir();
     },
@@ -340,7 +347,8 @@ async function smokeReport() {
   shown.trace = await js(`({ visible: !document.getElementById('traceCard').classList.contains('hidden'), legend: document.getElementById('traceLegend').textContent })`);
   if (process.env.WICK_SMOKE_DIALOG !== 'trace') {
     await js(`document.getElementById('stopButton').click()`);
-    await sleep(500);
+    await sleep(800);
+    shown.runs = await js(`document.querySelectorAll('#runList .run-row').length`);
   }
   // Settings: changing precision saves it.
   await js(`document.getElementById('openSettings').click()`);
@@ -372,7 +380,7 @@ async function smokeReport() {
   }
   const ok = errors.length === 0 && shown.engine === 'Engine running' && Boolean(shown.macro) && shown.previewDrawn &&
     shown.created === 'Smoke test' && shown.regions.includes('area') && shown.movedRegion?.x > 0 && /^[1-9]\d* px/.test(shown.matches) &&
-    shown.cli?.usedApp && shown.cli?.saved && shown.input?.precision === 0.7 && shown.trace?.visible;
+    shown.cli?.usedApp && shown.cli?.saved && shown.input?.precision === 0.7 && shown.trace?.visible && (process.env.WICK_SMOKE_DIALOG === 'trace' || shown.runs === 1);
   process.stdout.write(`WICK_SMOKE ${JSON.stringify({ ok, shown, errors })}\n`);
   app.exit(ok ? 0 : 1);
 }
@@ -425,8 +433,10 @@ app.whenReady().then(async () => {
   engine.on('event', (method, params) => {
     if (method === 'session.stats' || method === 'preview') sessionTarget = params.target ?? sessionTarget;
     if (method === 'macro.state' && params.state === 'running') runningTarget = sessionTarget;
+    const saved = runHistory().onEvent(method, params, runningTarget ?? sessionTarget);
     if (method === 'macro.end') runningTarget = null;
     forward(method, params);
+    if (saved) forward('runs.saved', { id: params.id });
   });
   engine.on('exit', () => {
     sessionTarget = null;

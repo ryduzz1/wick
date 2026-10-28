@@ -251,3 +251,11 @@ dialog label.check-row + p { margin-top: 8px; }
 .trace-legend i.input { width: 0; height: 10px; border: 0; border-left: 2px solid var(--ember); }
 .trace-foot { margin-top: 8px; min-height: 16px; font-family: var(--mono); }
 .trace-foot .muted { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+/* Run history */
+.run-list { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow: auto; }
+.run-row { display: grid; grid-template-columns: 14px 1fr auto auto auto; gap: 14px; align-items: center; padding: 7px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: left; font-size: 12px; cursor: pointer; }
+.run-row:hover, .run-row[aria-current="true"] { background: var(--hover); }
+.run-row span { color: var(--muted); font: 11px var(--mono); font-variant-numeric: tabular-nums; }
+.run-detail { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.run-detail .run-log { max-height: 180px; }

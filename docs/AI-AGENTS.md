@@ -25,10 +25,12 @@ To use the CLI from anywhere while running from source, link it once: `npm link`
 | `wick detect [--region R] [--color HEX] [--mask]` | `wick_detect` | The region's main colors, and where a color matches (pixel count, extent, centroid). `--mask` saves an image with matches painted ember. |
 | `wick act click [--at R]`, `act press KEY`, … | `wick_act` | One input, to test something. |
 | `wick probe --track NAME:REGION:HEX --clicks N --every MS` | `wick_probe` | Follows colors for a few seconds while sending timed input, and returns each tracker's position over time. |
+| `wick record [--seconds S] [--region R] [--you] [--run]` | `wick_record` | Records a few seconds: keyframes, a change score per sample, every input, and a contact sheet of the moments that changed most (the MCP tool returns it as an image). `--you` also logs your own clicks and keys in the game window, so an agent can watch you do something once. `--run` runs the macro meanwhile. |
 | `wick regions`, `wick region set NAME …`, `wick region remove NAME` | `wick_regions`, `wick_set_region`, `wick_remove_region` | Read and edit `regions.json`. The app's live view updates as they change. |
-| `wick run [--seconds S] [--live]` | `wick_run` | Runs the macro and waits for it to end. Returns how it ended, its stats and its log. On `sim` it runs instantly unless `--live`. |
+| `wick run [--seconds S] [--live] [--exact]` | `wick_run` | Runs the macro and waits for it to end. Returns how it ended, its stats and its log. On `sim` it runs instantly unless `--live`. Input goes through the app's human profile unless `--exact`. |
 | `wick simulate [--seeds N]` | `wick_simulate` | Runs the macro on several simulated bar-minigame games. |
 | `wick telemetry` | `wick_telemetry` | The last run's result again. |
+| `wick runs`, `wick runs show FILE` | `wick_runs` | Saved live runs of the macro (kept by the app), and one in full: its log and the trace of its last 15 seconds, to see why it failed. |
 | `wick stop` | `wick_stop` | Stops the running macro. |
 | `wick new NAME` | `wick_new_macro` | Creates a macro in the library. |
 
@@ -40,7 +42,7 @@ Agent input goes through the same gate as a macro's: only to the target window, 
 
 1. **Look.** `observe`, then draw regions around the moving parts with `region set`.
 2. **Detect.** `detect` each region to find exact colors from its palette, then check matches with `--mask`.
-3. **Measure.** `probe` to get the mechanics as numbers. For the bar minigame: the tick's drift with no input, how far one click pushes it, how often the zone jumps, and the latency.
+3. **Measure.** `probe` to get the mechanics as numbers. For a sequence you don't understand yet, `record --you` while the person plays it once, then read `record.jsonl` and the contact sheet. For the bar minigame: the tick's drift with no input, how far one click pushes it, how often the zone jumps, and the latency.
 4. **Write** the controller in `main.ts` from those measurements, not guesses.
 5. **Test.** `run` with a short limit, read the result and log, and fix what fails. Repeat until it's reliable.
 6. **Wrap up.** Fill in the manifest's `settings`, `permissions` and `README.md`.
@@ -57,4 +59,6 @@ wick probe --target sim --track tick:bar:#ffffff:40 --track zone:bar:#3ccf5a --c
 
 The result has, for each tracker, columns `t`, `x`, `y`, `left`, `right` and `vx` (positions as fractions of the region, `null` when not seen), plus the time each input was actually sent. Wick's tests use exactly this to measure the simulator's drift and click push to within 5% of their true values.
 
-Not built yet: `record` (clips with input logs) and `pack` (sharing). See the [roadmap](ROADMAP.md).
+Macros run with the human profile (a small, varied delay on every input and curved mouse moves), so leave some timing margin; `run --exact` shows how the logic does without it. Probes and single inputs are always exact.
+
+Not built yet: `pack` (sharing). See the [roadmap](ROADMAP.md).

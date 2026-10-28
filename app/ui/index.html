@@ -100,6 +100,15 @@
           <div class="trace-foot"><span id="traceHover" class="muted small">Tracker positions across their region over the last 10 seconds. Ticks along the bottom are inputs.</span></div>
         </section>
 
+        <section id="runsCard" class="card hidden">
+          <div class="section-title"><h2>Runs</h2><span class="muted small">Click one to see its trace and log</span></div>
+          <div id="runList" class="run-list"></div>
+          <div id="runDetail" class="run-detail hidden">
+            <p id="runDetailTitle" class="small"></p>
+            <ol id="runDetailLog" class="run-log"></ol>
+          </div>
+        </section>
+
         <section id="simResults" class="card hidden">
           <div class="section-title"><h2>Simulator test</h2><span id="simSummary" class="count-pill"></span></div>
           <div id="simRows" class="sim-rows"></div>

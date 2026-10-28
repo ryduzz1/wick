@@ -35,6 +35,8 @@ Usage: wick <command> [options]
                                  --exact sends input without the human profile
   simulate [--seeds N] [--seconds S] [--exact]
   telemetry                      The last run's result
+  runs [--last N] | runs show FILE
+                                 Saved live runs of this macro (app only)
   stop                           Stop whatever is running
   new NAME [--target T] [--dir D] Create a macro (in the library by default)
   init                           Add AGENTS.md and CLAUDE.md to this macro
@@ -215,6 +217,9 @@ export function toRequest(positional, flags, cwd = process.cwd()) {
       return ['simulate', { ...base, seeds: number(flags.seeds) ?? 5, seconds: number(flags.seconds) ?? 30, exact: Boolean(flags.exact) }];
     case 'telemetry':
       return ['telemetry', {}];
+    case 'runs':
+      needFolder();
+      return ['runs', { ...base, file: args[0] === 'show' ? args[1] : undefined, last: number(flags.last) ?? 10 }];
     case 'stop':
       return ['stop', {}];
     case 'new':

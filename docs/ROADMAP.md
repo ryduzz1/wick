@@ -53,6 +53,15 @@ Built as one large pass:
 
 **Verification:** probe tests measure the simulator's drift and click push within 5% of the true values (the pass's target). Agent tests cover input normalization, CLI parsing, detect, observe, probe, act, regions, run, simulate and telemetry on `sim`, the control socket, the MCP server end to end (including image results), and CLI errors. The app smoke test runs the CLI against the open app and checks it used the app's engine.
 
+### Pass 4: Recording, traces and human-like input (planned passes 7 and 8)
+
+- **Human profile** (`engine/crates/wick-engine/src/human.rs`): a skewed reaction delay, hold spread, curved mouse paths that slow near the target and sometimes overshoot and correct, turns split into steps that add up exactly, occasional slips, and drift over a long session, all scaled by one precision value. Inputs keep their order. On by default at 0.85; **Settings** (⌘,) turns it off, sets precision and changes the library folder. Probes and agent inputs stay exact; `run` and `simulate` take `--exact`.
+- **Recordings:** `session.record` and `sim.record` save keyframes, a change score per sample, every input and a contact sheet; `wick record` and `wick_record` expose them, with `--run` to run the macro meanwhile and `--you` to log the person's own clicks and keys while the game has focus (a pass-through event tap on macOS, low-level hooks on Windows, removed when the recording ends; Wick's own input is left out).
+- **Traces:** live runs stream tracker positions and inputs; the app draws them as a trace graph (bands for wide trackers such as a zone, lines for narrow ones, ember ticks for inputs, values on hover).
+- **Run history:** each live run is saved with how it ended, its stats, its log and the trace of its last 15 seconds. The **Runs** card lists them and opens one into the trace graph; `wick runs` and `wick_runs` give agents the same.
+
+**Verification:** human profile tests check delay means and spreads against precision, session drift, hold spread, that paths curve, sometimes overshoot and always end on target, that turns add up, and that inputs never reorder; the example still averages over 80% in the zone on `sim` with the profile at 0.85. Recorder tests check keyframes, change scores, Wick and "you" inputs with positions, and the contact sheet. A trace test checks the tick's traced position against the simulator's true position on every frame (within 1% of the bar). Node tests cover `record` with `--run` on `sim` and run history (saving, listing, trimming, reading). The app smoke test runs a macro, checks the trace graph and the saved run, and changes a setting. The Windows hooks type-check with `cargo clippy --target x86_64-pc-windows-msvc`.
+
 ## Still to test by hand
 
 Kept for the end-to-end test once the app is finished:
@@ -60,26 +69,14 @@ Kept for the end-to-end test once the app is finished:
 - macOS: capture and input on the test bench and in Roblox; F8 from another app; the permission prompts on a fresh install.
 - The live view editor on a real window: drag, resize, draw and color picking.
 - Agent tools on a real window: `observe`, `detect`, `probe` and `act` on the test bench; Claude Code building a macro from a new folder.
+- Human input: watch the mouse paths and click timing on the test bench at a few precision values; the example should still keep up at 0.85.
+- `wick record --you` on the test bench: your clicks and keys show up in `record.jsonl` with the right positions, Wick's own clicks are marked `wick`, and nothing is logged while another window has focus.
+- The trace graph and the Runs card during and after a live run on the test bench.
 - Everything on Windows.
 
 ## Build plan
 
-Left over from passes 1–4, to fold into the passes below: a `dist:dir` packaged build, `template` and `similar` detectors and a PNG fixture set, measured (rather than fixed) input latency on real windows, a per-frame detector benchmark, and choosing the library folder in the app.
-
-### Pass 4: Recording, traces and human-like input (planned passes 7 and 8)
-
-- `record`: PNG keyframes, change detection, and synchronized input and tracker logs (JSONL).
-- Trace graphs in the app, for live runs, recordings and run logs.
-- Run logs kept per run, with the detector log around each failure.
-
-**Checks:** tests that a sim recording's trace matches the simulation's ground truth. Manual: record a clip of the test bench and view its trace.
-
-#### Human profile
-
-- Reaction delay spread, timing and hold jitter, curved mouse paths with overshoot, occasional mistakes, slow drift over a session, and the precision slider.
-- Profiles applied to every output, with a "raw" option for testing.
-
-**Checks:** statistical tests that sampled delays and paths match their configured distributions; the example macro still passes at precision 0.85 on `sim`. Manual: watch mouse paths in the test bench.
+Left over from earlier passes, to fold into the passes below: a `dist:dir` packaged build, `template` and `similar` detectors and a PNG fixture set, measured (rather than fixed) input latency on real windows, and a per-frame detector benchmark. Modifier keys pressed on their own (shift, control) aren't heard by `record --you` on macOS yet.
 
 ### Pass 5: State machines, looping and the Roblox target's extras
 

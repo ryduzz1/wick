@@ -80,11 +80,12 @@ const TOOLS = [
   },
   { name: 'wick_simulate', method: 'simulate', description: 'Run the macro on several simulated bar-minigame games and report how often the tick stayed in the zone.', properties: { folder, seeds: { type: 'number' }, seconds: { type: 'number' }, exact: { type: 'boolean' } } },
   { name: 'wick_telemetry', method: 'telemetry', description: 'The last run\'s result and log.', properties: {} },
+  { name: 'wick_runs', method: 'runs', description: 'The macro\'s saved live runs, newest first: how each ended, stats and score. With file, one run in full, including its log and the trace of its last 15 seconds, to find out why it failed.', properties: { folder, file: { type: 'string' }, last: { type: 'number' } } },
   { name: 'wick_stop', method: 'stop', description: 'Stop the running macro.', properties: {} },
   { name: 'wick_new_macro', method: 'newMacro', description: 'Create a new macro folder from the starter template, in the Wick library unless dir is given.', properties: { name: { type: 'string' }, target, dir: { type: 'string' } }, required: ['name'] },
 ];
 
-const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'record', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate']);
+const NEEDS_FOLDER = new Set(['observe', 'detect', 'act', 'probe', 'record', 'regions', 'setRegion', 'removeRegion', 'run', 'simulate', 'runs']);
 
 /** Tool results as MCP content: the JSON, plus any PNG the command saved. */
 function content(result) {

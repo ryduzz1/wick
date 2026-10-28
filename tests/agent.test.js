@@ -168,3 +168,20 @@ test('the CLI prints JSON and fails clearly', async () => {
   assert.ok(JSON.parse(stdout).bar);
   await assert.rejects(run(process.execPath, [join(root, 'bin', 'wick.js'), 'region', 'set'], { cwd: folder }), /Name the region/);
 });
+
+test('run history keeps each run with its log and trace', async () => {
+  const { RunHistory } = await import('../app/runs.js');
+  const history = new RunHistory(join(dir, 'runs'));
+  history.onEvent('macro.state', { state: 'running', id: 'me/bar' }, 'sim');
+  history.onEvent('macro.log', { text: 'hello', at: 5 });
+  history.onEvent('macro.trace', { trackers: [{ id: 1, region: 'bar', color: '#ffffff' }], samples: [[0, [[0.5, 0.4, 0.6]]], [20_000, [null]]], inputs: [[10, 'left']] });
+  const file = history.onEvent('macro.end', { end: { reason: 'error', error: 'boom' }, elapsed: 20_000, inputs: 1, dropped: 0 });
+  assert.ok(fs.existsSync(file));
+  const [summary] = history.list('me/bar');
+  assert.equal(summary.end.error, 'boom');
+  assert.equal(summary.trace, undefined, 'lists leave out the trace');
+  const full = history.read('me/bar', summary.file);
+  assert.deepEqual(full.trace.samples, [[20_000, [null]]], 'keeps only the last 15 seconds');
+  assert.equal(full.logs[0].text, 'hello');
+  assert.throws(() => history.read('me/bar', '../x.json'), /Not a run file/);
+});

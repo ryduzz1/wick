@@ -326,6 +326,15 @@ export function createCommands(host) {
       };
     },
 
+    runs({ folder, file, last = 10 } = {}) {
+      const history = host.runHistory?.();
+      if (!history) throw new MacroError('Run history is kept by the Wick app. Open it and run the macro there (or with wick run --live).');
+      const { manifest } = macroInfo(folder);
+      if (!manifest) throw new MacroError('Runs needs a macro folder.');
+      if (file) return history.read(manifest.id, file);
+      return { runs: history.list(manifest.id, Number(last)), note: 'Newest first. Pass a file to get one run in full: its log and the trace of its last 15 seconds ([t, [[x, left, right] | null per tracker]]).' };
+    },
+
     telemetry() {
       if (!lastRun) throw new MacroError('Nothing has run yet in this session.');
       return lastRun;

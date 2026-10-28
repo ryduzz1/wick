@@ -78,21 +78,20 @@ Regions are anchored to the window's content area, not its frame:
   - *(planned)* `ocr`: text from a region (Vision on macOS, Windows.Media.Ocr on Windows).
   - *(planned)* `similar`: compares the screen to a reference image (used for the start-point check).
 - **Macro runtime:** embedded QuickJS (via `rquickjs`), one runtime per run with a 64 MB memory limit and a 250 ms limit per step. The API itself is a small JavaScript prelude (`prelude.js`) that queues commands; the engine drains them after each step. The runtime exposes only the Wick API; see [API.md](API.md) and [FORMAT.md](FORMAT.md#permissions-and-the-sandbox).
-- **Input:** CGEvent (macOS) and SendInput (Windows). Input is dropped unless the target window is focused. Camera turns use relative mouse movement (CGEvent delta fields; SendInput without `MOUSEEVENTF_ABSOLUTE`), since Roblox reads deltas when the mouse is locked. *(Planned:)* every output will first pass through the human profile. Anything still held when a run ends is released.
-- *(planned)* **Human profile:** reaction delay spread, timing jitter, hold-time spread, curved mouse paths with overshoot (slower near the target, as human aiming is), occasional mistakes, and slow drift over a session. A precision value from 0 to 1 scales all of it so a tight minigame can still pass.
-- **Safety:** a global F8 kill switch, registered by the engine itself so it works even if the app's UI hangs: a keyboard event tap on macOS (needs Accessibility, which input needs anyway) and `RegisterHotKey` on Windows. If the engine can't register it, the app registers F8 as an Electron global shortcut instead. Plus a focus guard, and *(planned)* a run log of every detector result and input.
+- **Input:** CGEvent (macOS) and SendInput (Windows). Input is dropped unless the target window is focused. Camera turns use relative mouse movement (CGEvent delta fields; SendInput without `MOUSEEVENTF_ABSOLUTE`), since Roblox reads deltas when the mouse is locked. *(Planned:)* every output will first pass through the human profile. Every output a macro sends first passes through the human profile. Anything still held when a run ends is released.
+- **Human profile** (`human.rs`): reaction delay with a skewed spread, hold-time spread, curved mouse paths that ease out near the target and sometimes overshoot and correct, camera turns split into eased steps, occasional slips, and slow drift over a session. A precision value from 0 to 1 scales all of it so a tight minigame can still pass; inputs never swap order. It's on by default at 0.85 (Settings, ⌘,). Agent probes and single inputs are always exact, and `run`/`simulate` take `--exact`.
+- **Recorder** (`record.rs`): samples the target (or one region) at up to 30 fps, scores how much each sample changed, saves keyframes when something changed or every second, and logs every input in `record.jsonl`: Wick's own (tagged on macOS with an event field, flagged as injected on Windows) and, when asked, the person's clicks and keys while the target has focus, from a pass-through event tap on macOS or low-level hooks on Windows that are removed when the recording ends. It ends with a contact sheet of the moments that changed most.
+- **Traces:** a live run streams each frame's tracker positions and the macro's inputs (`macro.trace`, batched every 50 ms); the app draws them and keeps the last 15 seconds with each saved run.
+- **Safety:** a global F8 kill switch, registered by the engine itself so it works even if the app's UI hangs: a keyboard event tap on macOS (needs Accessibility, which input needs anyway) and `RegisterHotKey` on Windows. If the engine can't register it, the app registers F8 as an Electron global shortcut instead. Plus a focus guard, and a saved history of each live run: how it ended, its stats, its log, and the trace of its last 15 seconds.
 
 ## App
 
-Built: a macro list (bundled examples plus folders you open), a target picker, the live view with region and tracker overlays, run controls and states, stat tiles, a settings form generated from the manifest, the run log, a simulator test, macOS permission onboarding and the kill-switch chip.
+Built: the macro library (your library folder, folders you open and the bundled examples), a target picker, the live view with region and tracker overlays and an editor for regions and colors, run controls and states, stat tiles, a live trace graph, run history, a settings form generated from the manifest, the run log, a simulator test, app settings (human input and the library folder), macOS permission onboarding and the kill-switch chip. The agent surface, the `wick` CLI and an MCP server, calls the same command layer (see [AI-AGENTS.md](AI-AGENTS.md)).
 
 *(Planned)*:
 
-- Macro library: install, update, export, calibrate.
-- Region editing: draw and drag regions on the live view, preview detector masks.
-- Recordings: clips plus synchronized input logs, and traces extracted from them.
-- Agent surface: the `wick` CLI and an MCP server, both calling the same command layer (see [AI-AGENTS.md](AI-AGENTS.md)).
-- Telemetry: success rate, loop count, state timings and errors per run.
+- Install, update, export and calibrate shared macros.
+- Telemetry: success rate, loop count and state timings per run.
 
 ## Platform permissions
 
@@ -114,8 +113,11 @@ Built: a macro list (bundled examples plus folders you open), a target picker, t
 engine/crates/wick-platform   OS layer: window list, capture, input, hotkey, permissions
   native/macos.m              ScreenCaptureKit, CGEvent and event tap, built by build.rs
   src/windows.rs              Graphics Capture, SendInput, RegisterHotKey, Toolhelp
-engine/crates/wick-engine     targets, vision, trackers, simulator, runtime, sessions, JSON-RPC
-app/                          Electron main process, engine client, macro loader, UI
+engine/crates/wick-engine     targets, vision, trackers, simulator, runtime, sessions, JSON-RPC,
+                              human profile, probes and recordings
+app/                          Electron main process, engine client, macro loader, library,
+                              run history, command layer, control socket, CLI, MCP server, UI
+bin/wick.js                   the wick command
 testbench/                    the bar minigame as a page, opened by the app
 examples/                     example macros, bundled with the app
 sdk/wick.d.ts                 types for macro authors
